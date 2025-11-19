@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">TURAINCASH</string>
+    <string name="title_activity_main">TURAINCASH</string>
+    <string name="package_name">com.turnaicash.app</string>
+    <string name="custom_url_scheme">com.turnaicash.app</string>
+</resources>

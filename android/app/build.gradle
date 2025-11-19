@@ -1,0 +1,113 @@
+apply plugin: 'com.android.application'
+
+   
+//   dependencies {
+//       implementation 'com.google.firebase:firebase-messaging:23.4.0'
+//       implementation 'com.google.firebase:firebase-analytics'
+//   }
+
+    dependencies {
+        implementation 'com.google.firebase:firebase-messaging:23.4.0'
+        implementation 'com.google.firebase:firebase-analytics:22.1.2'
+    }
+
+
+
+// android {
+//     namespace "com.turnaicash.app"
+//     compileSdk rootProject.ext.compileSdkVersion
+//     defaultConfig {
+//         applicationId "com.turnaicash.app"
+//         minSdkVersion rootProject.ext.minSdkVersion
+//         targetSdkVersion rootProject.ext.targetSdkVersion
+//         versionCode 1
+//         versionName "1.0"
+//         // testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+//         // aaptOptions {
+//         //      // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
+//         //      // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
+//         //     ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
+//         // }
+//     }
+//     buildTypes {
+//         release {
+//             minifyEnabled false
+//             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+//         }
+//     }
+// }
+
+android {
+    namespace "com.turnaicash.app"
+    compileSdkVersion 35
+
+    defaultConfig {
+//        applicationId "com.turnaicash.android"
+        applicationId "com.turaincash.android"   // ✅ correct
+        minSdkVersion 23
+        targetSdkVersion 34
+        //targetSdkVersion 35  // <-- update this too for consistency
+
+        versionCode 5
+        versionName "1.0.5"
+    }
+
+    signingConfigs {
+        release {
+            storeFile file("turnaicash.keystore")
+            storePassword "CodeLab1992"
+            keyAlias "turnaicash"
+            keyPassword "CodeLab1992"
+        }
+    }
+    buildTypes {
+        release {
+            signingConfig signingConfigs.release
+        }
+    }
+
+    // buildTypes {
+    //     release {
+    //         minifyEnabled false
+    //         proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+    //     }
+    // }
+}
+
+
+repositories {
+    flatDir{
+        dirs '../capacitor-cordova-android-plugins/src/main/libs', 'libs'
+    }
+}
+
+dependencies {
+    implementation fileTree(include: ['*.jar'], dir: 'libs')
+    //implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
+    implementation "androidx.appcompat:appcompat:1.6.1"
+    //implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
+    implementation "androidx.coordinatorlayout:coordinatorlayout:1.2.0"
+    // implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
+    implementation "androidx.core:core-splashscreen:1.0.1"
+    implementation project(':capacitor-android')
+    //testImplementation "junit:junit:$junitVersion"
+    testImplementation "junit:junit:4.13.2"
+    //androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
+    androidTestImplementation "androidx.test.ext:junit:1.2.1"
+    //androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
+    androidTestImplementation "androidx.test.espresso:espresso-core:3.6.1"
+    implementation project(':capacitor-cordova-android-plugins')
+}
+
+apply from: 'capacitor.build.gradle'
+
+try {
+    def servicesJSON = file('google-services.json')
+    if (servicesJSON.text) {
+        apply plugin: 'com.google.gms.google-services'
+    }
+} catch(Exception e) {
+    logger.info("google-services.json not found, google-services plugin not applied. Push Notifications won't work")
+}
+
+apply plugin: 'com.google.gms.google-services'

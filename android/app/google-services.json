@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "665076337085",
+    "project_id": "turaincash-57c48",
+    "storage_bucket": "turaincash-57c48.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:665076337085:android:bd4148cd1d989183292ad4",
+        "android_client_info": {
+          "package_name": "com.turaincash.android"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC7XoTvmAQ5UCViDMtu8yAwNT7GikhW6JU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
