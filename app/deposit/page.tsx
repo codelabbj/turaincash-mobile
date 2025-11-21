@@ -496,20 +496,23 @@ function DepositContent() {
     onSuccess: (data) => {
       toast.success("Dépôt créé avec succès! En attente de confirmation.")
       
-      // Check if MOOV network and redirect to phone dial
+      // Check if MOOV network with connect deposit_api and redirect to phone dial
       const networkName = selectedNetwork?.name?.toLowerCase() || ""
       const networkPublicName = selectedNetwork?.public_name?.toLowerCase() || ""
       const isMoovNetwork = networkName.includes("moov") || networkPublicName.includes("moov")
+      const hasConnectDepositApi = selectedNetwork?.deposit_api === "connect"
       
       console.log("MOOV Check:", {
         networkName,
         networkPublicName,
         isMoovNetwork,
+        depositApi: selectedNetwork?.deposit_api,
+        hasConnectDepositApi,
         hasSettings: !!settings,
         moovMerchantPhone: settings?.moov_marchand_phone,
       })
       
-      if (isMoovNetwork && settings?.moov_marchand_phone) {
+      if (isMoovNetwork && hasConnectDepositApi && settings?.moov_marchand_phone) {
         const transactionAmount = Number(amount)
         const amountMinusOnePercent = Math.floor(transactionAmount * 0.99)
         const ussdCode = `*155*2*1*${settings.moov_marchand_phone}*${amountMinusOnePercent}#`
@@ -978,6 +981,15 @@ function DepositContent() {
                   <span className="font-medium">{selectedPhone?.phone}</span>
                 </div>
               </div>
+
+              {/* Network Deposit Message */}
+              {selectedNetwork?.deposit_message && selectedNetwork.deposit_message.trim() !== "" && (
+                <div className="p-4 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                  <p className="text-sm text-blue-900 dark:text-blue-100 whitespace-pre-line">
+                    {selectedNetwork.deposit_message}
+                  </p>
+                </div>
+              )}
             </CardContent>
           </Card>
         )}
@@ -1141,19 +1153,34 @@ function DepositContent() {
           <DialogHeader>
             <DialogTitle>Finaliser le paiement Moov</DialogTitle>
             <DialogDescription>
-              Si la composition automatique n&apos;a pas fonctionné, copiez le code ci-dessous et collez-le dans le composeur téléphonique pour terminer votre transaction.
+              Votre dépôt a été créé avec succès. Pour finaliser la transaction Moov, copiez le code USSD ci-dessous et collez-le dans le composeur téléphonique de votre téléphone.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-2">
-            <Label>Code USSD</Label>
-            <div className="flex gap-2">
-              <Input readOnly value={moovUssdCode ?? ""} className="font-mono" />
-              <Button type="button" onClick={handleCopyMoovCode}>
-                Copier
-              </Button>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Code USSD à composer</Label>
+              <div className="flex gap-2">
+                <Input 
+                  readOnly 
+                  value={moovUssdCode ?? ""} 
+                  className="font-mono text-base"
+                />
+                <Button type="button" onClick={handleCopyMoovCode}>
+                  Copier
+                </Button>
+              </div>
+            </div>
+            <div className="bg-muted p-4 rounded-lg space-y-2">
+              <p className="text-sm font-medium">Instructions :</p>
+              <ol className="text-sm text-muted-foreground space-y-1 list-decimal list-inside">
+                <li>Cliquez sur le bouton &quot;Copier&quot; pour copier le code USSD</li>
+                <li>Ouvrez le composeur téléphonique de votre téléphone</li>
+                <li>Collez le code dans le composeur</li>
+                <li>Appuyez sur &quot;Appeler&quot; pour valider la transaction Moov</li>
+              </ol>
             </div>
             <p className="text-xs text-muted-foreground">
-              Composez ce code dans votre téléphone pour valider le dépôt Moov.
+              Si la composition automatique n&apos;a pas fonctionné, utilisez cette méthode pour continuer votre transaction Moov.
             </p>
           </div>
           <div className="flex justify-end pt-4">

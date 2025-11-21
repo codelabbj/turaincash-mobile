@@ -34,6 +34,7 @@ function DashboardContent() {
   const { referralBonusEnabled } = useSettings()
   const [adImageErrors, setAdImageErrors] = useState<Set<number>>(new Set())
   const [currentAdIndex, setCurrentAdIndex] = useState(0)
+  const [isCarouselPaused, setIsCarouselPaused] = useState(false)
   const { theme, setTheme } = useTheme()
   const [messageMenuOpen, setMessageMenuOpen] = useState(false)
 
@@ -131,14 +132,14 @@ function DashboardContent() {
 
   // Auto-play carousel
   useEffect(() => {
-    if (!advertisements || advertisements.length <= 1) return
+    if (!advertisements || advertisements.length <= 1 || isCarouselPaused) return
 
     const interval = setInterval(() => {
       setCurrentAdIndex((prev) => (prev + 1) % advertisements.length)
     }, 5000) // Change slide every 5 seconds
 
     return () => clearInterval(interval)
-  }, [advertisements])
+  }, [advertisements, isCarouselPaused])
 
   const handleImageError = (index: number) => {
     setAdImageErrors((prev) => new Set(prev).add(index))
@@ -146,6 +147,15 @@ function DashboardContent() {
 
   const goToSlide = (index: number) => {
     setCurrentAdIndex(index)
+  }
+
+  const handleCarouselPressStart = () => {
+    if (!advertisements || advertisements.length <= 1) return
+    setIsCarouselPaused(true)
+  }
+
+  const handleCarouselPressEnd = () => {
+    setIsCarouselPaused(false)
   }
 
   const getStatusBadge = (status: string) => {
@@ -177,15 +187,12 @@ function DashboardContent() {
               <img
                 src="/Turaincash-logo.png"
                 alt="TurainCash Logo"
-                width={65}
-                height={65}
+                width={70}
+                height={70}
                 className="object-contain"
               />
-              <div className="flex-1">
-                 <h1 className="text-base font-bold">TURAINCASH</h1>
-              </div>
             </div>
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-4">
               <Button 
                 variant="ghost" 
                 size="icon" 
@@ -249,7 +256,14 @@ function DashboardContent() {
         {/* Advertisement Section */}
         {advertisements && advertisements.length > 0 ? (
           <Card className="shadow-sm overflow-hidden p-0 relative">
-            <div className="relative w-full aspect-[16/9] bg-muted">
+            <div
+              className="relative w-full aspect-[16/9] bg-muted"
+              onMouseEnter={handleCarouselPressStart}
+              onMouseLeave={handleCarouselPressEnd}
+              onTouchStart={handleCarouselPressStart}
+              onTouchEnd={handleCarouselPressEnd}
+              onTouchCancel={handleCarouselPressEnd}
+            >
               {/* Carousel Container */}
               <div className="relative w-full h-full overflow-hidden">
                 {advertisements.map((ad, index) => (
@@ -432,7 +446,15 @@ function DashboardContent() {
                         <p className="font-medium text-sm truncate">
                           {transaction.type_trans === "deposit" ? t("deposit") : t("withdraw")}
                         </p>
-                        <p className="text-xs text-muted-foreground">{formatDate(transaction.created_at)}</p>
+                        <div className="flex items-center gap-2">
+                          {transaction.app_details?.name && (
+                            <p className="text-xs text-muted-foreground truncate">
+                              {transaction.app_details.name}
+                            </p>
+                          )}
+                          <span className="text-xs text-muted-foreground">•</span>
+                          <p className="text-xs text-muted-foreground">{formatDate(transaction.created_at)}</p>
+                        </div>
                       </div>
                     </div>
                     <div className="text-right space-y-1 flex-shrink-0">
@@ -468,7 +490,7 @@ function DashboardContent() {
               variant="ghost"
               className="w-full justify-start gap-3 h-auto py-3"
               onClick={() => {
-                window.open("https://wa.me/", "_blank")
+                window.open("https://wa.me/message/QWHEMKHU72TUK1", "_blank")
                 setMessageMenuOpen(false)
               }}
             >
@@ -486,7 +508,7 @@ function DashboardContent() {
               variant="ghost"
               className="w-full justify-start gap-3 h-auto py-3"
               onClick={() => {
-                window.open("https://t.me/", "_blank")
+                window.open("https://t.me/Turaincash", "_blank")
                 setMessageMenuOpen(false)
               }}
             >

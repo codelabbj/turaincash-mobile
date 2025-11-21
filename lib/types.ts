@@ -68,6 +68,22 @@ export interface Transaction {
   app: string
   network: number
   source: SourceType
+  app_details?: {
+    id: string
+    name: string
+    image?: string
+    enable?: boolean
+    deposit_tuto_link?: string | null
+    withdrawal_tuto_link?: string | null
+    city?: string
+    street?: string
+    minimun_deposit?: number
+    max_deposit?: number
+    minimun_with?: number
+    max_win?: number
+    active_for_deposit?: boolean
+    active_for_with?: boolean
+  }
 }
 
 export interface Notification {

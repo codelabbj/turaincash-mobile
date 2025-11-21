@@ -54,7 +54,8 @@ function TransactionsContent() {
       const matchesSearch = searchQuery === "" || 
         transaction.reference.toLowerCase().includes(searchQuery.toLowerCase()) ||
         transaction.phone_number.includes(searchQuery) ||
-        transaction.amount.toString().includes(searchQuery)
+        transaction.amount.toString().includes(searchQuery) ||
+        transaction.app_details?.name?.toLowerCase().includes(searchQuery.toLowerCase())
       
       // Type filter
       const matchesType = typeFilter === "all" || transaction.type_trans === typeFilter
@@ -225,9 +226,19 @@ function TransactionsContent() {
                         <p className="font-semibold text-base truncate">
                           {getTransactionTypeLabel(transaction.type_trans)}
                         </p>
-                        <p className="text-sm text-muted-foreground truncate">
-                          {transaction.reference}
-                        </p>
+                        <div className="flex items-center gap-2">
+                          {transaction.app_details?.name && (
+                            <p className="text-sm text-muted-foreground truncate">
+                              {transaction.app_details.name}
+                            </p>
+                          )}
+                          {transaction.app_details?.name && (
+                            <span className="text-sm text-muted-foreground">•</span>
+                          )}
+                          <p className="text-sm text-muted-foreground truncate">
+                            {transaction.reference}
+                          </p>
+                        </div>
                       </div>
                     </div>
                     <div className="text-right flex-shrink-0">
@@ -240,6 +251,12 @@ function TransactionsContent() {
 
                   {/* Transaction Details */}
                   <div className="space-y-2 pt-3 border-t">
+                    {transaction.app_details?.name && (
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm text-muted-foreground">Plateforme</span>
+                        <span className="text-sm font-medium">{transaction.app_details.name}</span>
+                      </div>
+                    )}
                     <div className="flex justify-between items-center">
                       <span className="text-sm text-muted-foreground">{t("phone")}</span>
                       <span className="text-sm font-medium">{transaction.phone_number}</span>

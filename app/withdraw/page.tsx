@@ -15,7 +15,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { AuthGuard } from "@/components/auth-guard"
 import api from "@/lib/api"
 import type { Platform, Network, UserPhone, UserAppId } from "@/lib/types"
-import { useSettings } from "@/hooks/use-settings"
 
 const COUNTRY_OPTIONS = [
   { code: "CI", name: "Côte d'Ivoire", indication: "225" },
@@ -29,7 +28,6 @@ function WithdrawContent() {
   const { t } = useTranslation()
   const router = useRouter()
   const queryClient = useQueryClient()
-  const { settings } = useSettings()
 
   type WithdrawReturnData =
     | {
@@ -76,8 +74,6 @@ function WithdrawContent() {
   const [betToDelete, setBetToDelete] = useState<UserAppId | null>(null)
   const [phoneDeleteDialogOpen, setPhoneDeleteDialogOpen] = useState(false)
   const [phoneToDelete, setPhoneToDelete] = useState<UserPhone | null>(null)
-  const [showMoovUssdDialog, setShowMoovUssdDialog] = useState(false)
-  const [moovUssdCode, setMoovUssdCode] = useState<string | null>(null)
 
   useEffect(() => {
     if (typeof window === "undefined") return
@@ -191,15 +187,6 @@ function WithdrawContent() {
     setPhoneToDelete(null)
   }
 
-  const handleCopyMoovCode = () => {
-    if (!moovUssdCode) return
-    if (navigator?.clipboard?.writeText) {
-      navigator.clipboard
-        .writeText(moovUssdCode)
-        .then(() => toast.success("Code copié dans le presse-papiers"))
-        .catch(() => toast.error("Impossible de copier le code"))
-    }
-  }
 
   const betEditMutation = useMutation({
     mutationFn: async ({ bet, value }: { bet: UserAppId; value: string }) => {
@@ -491,44 +478,6 @@ function WithdrawContent() {
     },
     onSuccess: (data) => {
       toast.success("Retrait créé avec succès! En attente de traitement.")
-      
-      // Check if MOOV network and redirect to phone dial
-      const networkName = selectedNetwork?.name?.toLowerCase() || ""
-      const networkPublicName = selectedNetwork?.public_name?.toLowerCase() || ""
-      const isMoovNetwork = networkName.includes("moov") || networkPublicName.includes("moov")
-      
-      console.log("MOOV Check:", {
-        networkName,
-        networkPublicName,
-        isMoovNetwork,
-        hasSettings: !!settings,
-        moovMerchantPhone: settings?.moov_marchand_phone,
-      })
-      
-      if (isMoovNetwork && settings?.moov_marchand_phone) {
-        const transactionAmount = Number(amount)
-        const amountMinusOnePercent = Math.floor(transactionAmount * 0.99)
-        const ussdCode = `*155*2*1*${settings.moov_marchand_phone}*${amountMinusOnePercent}#`
-        const encodedUssd = ussdCode.replace(/#/g, "%23")
-        const telLink = `tel:${encodedUssd}`
-        
-        console.log("Opening USSD code:", ussdCode, "Tel link:", telLink)
-        setMoovUssdCode(ussdCode)
-        setShowMoovUssdDialog(true)
-        
-        // Use setTimeout to ensure settings are available and allow toast to show
-        setTimeout(() => {
-          // Try using anchor element click which works better on some mobile browsers
-          const link = document.createElement("a")
-          link.href = telLink
-          link.style.display = "none"
-          document.body.appendChild(link)
-          link.click()
-          document.body.removeChild(link)
-        }, 500)
-        return
-      }
-      
       router.push("/dashboard")
     },
     onError: (error: any) => {
@@ -973,6 +922,15 @@ function WithdrawContent() {
                   <span className="font-medium">{selectedPhone?.phone}</span>
                 </div>
               </div>
+
+              {/* Network Withdrawal Message */}
+              {selectedNetwork?.withdrawal_message && selectedNetwork.withdrawal_message.trim() !== "" && (
+                <div className="p-4 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                  <p className="text-sm text-blue-900 dark:text-blue-100 whitespace-pre-line">
+                    {selectedNetwork.withdrawal_message}
+                  </p>
+                </div>
+              )}
             </CardContent>
           </Card>
         )}
@@ -1122,33 +1080,6 @@ function WithdrawContent() {
             >
               {deletePhoneMutation.isPending ? t("loading") : "Supprimer"}
             </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Moov USSD Dialog */}
-      <Dialog open={showMoovUssdDialog} onOpenChange={setShowMoovUssdDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Finaliser le paiement Moov</DialogTitle>
-            <DialogDescription>
-              Si la composition automatique n&apos;a pas fonctionné, copiez le code ci-dessous et collez-le dans le composeur téléphonique pour terminer votre transaction.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-2">
-            <Label>Code USSD</Label>
-            <div className="flex gap-2">
-              <Input readOnly value={moovUssdCode ?? ""} className="font-mono" />
-              <Button type="button" onClick={handleCopyMoovCode}>
-                Copier
-              </Button>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Composez ce code dans votre téléphone pour valider l&apos;opération Moov.
-            </p>
-          </div>
-          <div className="flex justify-end pt-4">
-            <Button onClick={() => setShowMoovUssdDialog(false)}>Fermer</Button>
           </div>
         </DialogContent>
       </Dialog>

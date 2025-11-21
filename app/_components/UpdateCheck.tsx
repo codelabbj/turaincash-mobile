@@ -5,13 +5,26 @@ import { X } from "lucide-react";
 
 // Get current installed version - you may need to adjust this based on your app's versioning system
 function getCurrentVersion(): string {
-  // Check if we've stored the installed version in localStorage
-  const storedVersion = localStorage.getItem('app_installed_version');
-  if (storedVersion) {
-    return storedVersion;
+  const FALLBACK_VERSION = "1.0.0"
+
+  if (typeof window !== "undefined") {
+    const envVersion =
+      process.env.NEXT_PUBLIC_APP_VERSION || (window as any)?.__APP_VERSION__
+
+    if (envVersion) {
+      localStorage.setItem("app_installed_version", envVersion)
+      return envVersion
+    }
+
+    const storedVersion = localStorage.getItem("app_installed_version")
+    if (storedVersion) {
+      return storedVersion
+    }
+  } else if (process.env.NEXT_PUBLIC_APP_VERSION) {
+    return process.env.NEXT_PUBLIC_APP_VERSION
   }
-  // Default fallback version - update this to match your actual app version
-  return "1.0.0";
+
+  return FALLBACK_VERSION
 }
 
 // Compare version strings (e.g., "1.0.1" vs "1.0.0")
@@ -257,6 +270,10 @@ export function UpdateCheck() {
         // Don't show if versions are equal (already up to date)
         if (versionsAreEqual) {
           console.log('Versions are equal, not showing modal');
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('app_installed_version', manifestVersion);
+            localStorage.removeItem('app_dismissed_version');
+          }
           return;
         }
         
