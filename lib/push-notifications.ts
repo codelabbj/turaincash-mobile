@@ -1,6 +1,8 @@
 import { Capacitor } from '@capacitor/core';
 import { PushNotifications, Token, PushNotificationSchema, ActionPerformed } from '@capacitor/push-notifications';
 import { LocalNotifications } from '@capacitor/local-notifications';
+import api from './api';
+import { getUser } from './auth';
 
 let isInitialized = false;
 let registrationToken: string | null = null;
@@ -208,25 +210,29 @@ async function registerDeviceOnBackend(token: string, platform: 'android' | 'ios
     try {
         console.log('📝 [TEST LOG] Sending token to backend:', { token, platform });
 
-        // Use relative URL for internal API
-        const response = await fetch('/api/fcm/token', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                token,
-                platform,
-                // userId can be added here if available in context
-            }),
+        // Use api instance for checking auth token and handling interceptors
+        // Endpoint: /mobcash/devices/
+        // Payload: { registration_id, type, user_id (optional) }
+
+        const user = getUser();
+        const userId = user?.id || null;
+
+        const response = await api.post('/mobcash/devices/', {
+            registration_id: token,
+            type: platform, // 'android' | 'ios' | 'web'
+            user_id: userId,
+            active: true
         });
 
-        if (response.ok) {
-            console.log('✅ [TEST LOG] Device registered on backend successfully');
-        } else {
-            console.error('❌ [TEST LOG] Failed to register device on backend:', response.statusText);
-        }
-    } catch (error) {
+        console.log('✅ [TEST LOG] Device registered on backend successfully', response.data);
+    } catch (error: any) {
         console.error('❌ [TEST LOG] Error registering device on backend:', error);
+
+        if (error.response) {
+            console.error('❌ [TEST LOG] Backend error details:', {
+                status: error.response.status,
+                data: error.response.data
+            });
+        }
     }
 }
