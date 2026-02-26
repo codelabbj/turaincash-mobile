@@ -498,13 +498,6 @@ function DepositContent() {
         source: "mobile",
       }
 
-      // Add city and street if available from platform
-      if (selectedPlatform!.city) {
-        payload.city = selectedPlatform!.city
-      }
-      if (selectedPlatform!.street) {
-        payload.street = selectedPlatform!.street
-      }
 
       const response = await api.post("/mobcash/transaction-deposit", payload)
       return response.data
@@ -757,8 +750,8 @@ function DepositContent() {
                         setTimeout(() => setStep(2), 100)
                       }}
                       className={`relative p-3 rounded-lg border-2 cursor-pointer transition-all active:scale-95 ${selectedPlatform?.id === platform.id
-                          ? "border-primary bg-primary/10"
-                          : "border-border hover:border-primary/50"
+                        ? "border-primary bg-primary/10"
+                        : "border-border hover:border-primary/50"
                         }`}
                     >
                       {selectedPlatform?.id === platform.id && (
@@ -804,8 +797,8 @@ function DepositContent() {
                           setTimeout(() => setStep(3), 100)
                         }}
                         className={`p-4 rounded-lg border-2 cursor-pointer transition-all ${selectedBetId?.id === betId.id
-                            ? "border-primary bg-primary/10"
-                            : "border-border hover:border-primary/50"
+                          ? "border-primary bg-primary/10"
+                          : "border-border hover:border-primary/50"
                           }`}
                       >
                         <div className="flex items-center justify-between">
@@ -887,8 +880,8 @@ function DepositContent() {
                         setTimeout(() => setStep(4), 100)
                       }}
                       className={`relative p-4 rounded-lg border-2 cursor-pointer transition-all ${selectedNetwork?.id === network.id
-                          ? "border-primary bg-primary/10"
-                          : "border-border hover:border-primary/50"
+                        ? "border-primary bg-primary/10"
+                        : "border-border hover:border-primary/50"
                         }`}
                     >
                       {selectedNetwork?.id === network.id && (
@@ -932,8 +925,8 @@ function DepositContent() {
                             setTimeout(() => setStep(5), 100)
                           }}
                           className={`p-4 rounded-lg border-2 cursor-pointer transition-all ${selectedPhone?.id === phone.id
-                              ? "border-primary bg-primary/10"
-                              : "border-border hover:border-primary/50"
+                            ? "border-primary bg-primary/10"
+                            : "border-border hover:border-primary/50"
                             }`}
                         >
                           <div className="flex items-center justify-between">
@@ -1042,18 +1035,6 @@ function DepositContent() {
                   <span className="text-muted-foreground">{t("platform")}</span>
                   <span className="font-medium">{selectedPlatform?.name}</span>
                 </div>
-                {selectedPlatform?.city && (
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Ville</span>
-                    <span className="font-medium">{selectedPlatform.city}</span>
-                  </div>
-                )}
-                {selectedPlatform?.street && (
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Rue</span>
-                    <span className="font-medium">{selectedPlatform.street}</span>
-                  </div>
-                )}
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">ID de pari</span>
                   <span className="font-medium">{selectedBetId?.user_app_id}</span>
@@ -1329,18 +1310,6 @@ function DepositContent() {
               <span className="text-muted-foreground">{t("platform")}</span>
               <span className="font-medium">{selectedPlatform?.name}</span>
             </div>
-            {selectedPlatform?.city && (
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Ville</span>
-                <span className="font-medium">{selectedPlatform.city}</span>
-              </div>
-            )}
-            {selectedPlatform?.street && (
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Rue</span>
-                <span className="font-medium">{selectedPlatform.street}</span>
-              </div>
-            )}
             <div className="flex justify-between">
               <span className="text-muted-foreground">ID de pari</span>
               <span className="font-medium">{selectedBetId?.user_app_id}</span>

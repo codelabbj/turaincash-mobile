@@ -597,8 +597,8 @@ function WithdrawContent() {
                         setTimeout(() => setStep(2), 100)
                       }}
                       className={`relative p-4 rounded-lg border-2 cursor-pointer transition-all ${selectedPlatform?.id === platform.id
-                          ? "border-primary bg-primary/10"
-                          : "border-border hover:border-primary/50"
+                        ? "border-primary bg-primary/10"
+                        : "border-border hover:border-primary/50"
                         }`}
                     >
                       {selectedPlatform?.id === platform.id && (
@@ -644,8 +644,8 @@ function WithdrawContent() {
                           setTimeout(() => setStep(3), 100)
                         }}
                         className={`p-4 rounded-lg border-2 cursor-pointer transition-all ${selectedBetId?.id === betId.id
-                            ? "border-primary bg-primary/10"
-                            : "border-border hover:border-primary/50"
+                          ? "border-primary bg-primary/10"
+                          : "border-border hover:border-primary/50"
                           }`}
                       >
                         <div className="flex items-center justify-between">
@@ -727,8 +727,8 @@ function WithdrawContent() {
                         setTimeout(() => setStep(4), 100)
                       }}
                       className={`relative p-4 rounded-lg border-2 cursor-pointer transition-all ${selectedNetwork?.id === network.id
-                          ? "border-primary bg-primary/10"
-                          : "border-border hover:border-primary/50"
+                        ? "border-primary bg-primary/10"
+                        : "border-border hover:border-primary/50"
                         }`}
                     >
                       {selectedNetwork?.id === network.id && (
@@ -772,8 +772,8 @@ function WithdrawContent() {
                             setTimeout(() => setStep(5), 100)
                           }}
                           className={`p-4 rounded-lg border-2 cursor-pointer transition-all ${selectedPhone?.id === phone.id
-                              ? "border-primary bg-primary/10"
-                              : "border-border hover:border-primary/50"
+                            ? "border-primary bg-primary/10"
+                            : "border-border hover:border-primary/50"
                             }`}
                         >
                           <div className="flex items-center justify-between">
