@@ -67,6 +67,10 @@ export interface Transaction {
   withdriwal_code?: string
   app: string
   network: number
+  message?: string
+  ussd_code?: string
+  transaction_link?: string
+  payment_by_link?: boolean
   source: SourceType
   app_details?: {
     id: string

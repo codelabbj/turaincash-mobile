@@ -16,6 +16,9 @@ import { AuthGuard } from "@/components/auth-guard"
 import api from "@/lib/api"
 import type { Platform, Network, UserPhone, UserAppId } from "@/lib/types"
 import { useSettings } from "@/hooks/use-settings"
+import { TransactionSummaryDialog } from "@/components/transaction-summary-dialog"
+import { transactionApi } from "@/lib/api-client"
+import { Transaction } from "@/lib/types"
 
 const COUNTRY_OPTIONS = [
   { code: "CI", name: "Côte d'Ivoire", indication: "225" },
@@ -82,6 +85,9 @@ function DepositContent() {
   const [moovUssdCode, setMoovUssdCode] = useState<string | null>(null)
   const [showOrangeUssdDialog, setShowOrangeUssdDialog] = useState(false)
   const [orangeUssdCode, setOrangeUssdCode] = useState<string | null>(null)
+
+  const [lastTransaction, setLastTransaction] = useState<Transaction | null>(null)
+  const [isTransactionSummaryOpen, setIsTransactionSummaryOpen] = useState(false)
 
   useEffect(() => {
     if (typeof window === "undefined") return
@@ -502,9 +508,16 @@ function DepositContent() {
       const response = await api.post("/mobcash/transaction-deposit", payload)
       return response.data
     },
-    onSuccess: (data) => {
+    onSuccess: async(data) => {
       toast.success("Dépôt créé avec succès! En attente de confirmation.")
 
+      try {
+        const lastTrans = await transactionApi.getLastTransaction()
+        setLastTransaction(lastTrans)
+        setIsTransactionSummaryOpen(true)
+        return // Arrêter ici pour afficher le modal
+      } catch (error) {
+        console.error("Erreur getLastTransaction:", error)
       // Check if MOOV network with connect deposit_api and redirect to phone dial
       const networkName = selectedNetwork?.name?.toLowerCase() || ""
       const networkPublicName = selectedNetwork?.public_name?.toLowerCase() || ""
@@ -626,7 +639,7 @@ function DepositContent() {
       } else {
         router.push("/dashboard")
       }
-    },
+    }},
     onError: (error: any) => {
       // Check for rate limit error (error_time_message) in multiple possible locations
       const errorData =
@@ -649,6 +662,106 @@ function DepositContent() {
       }
     },
   })
+
+  const handleCancelTransaction = async (reference: string) => {
+    await transactionApi.cancelTransaction(reference)
+    setTimeout(() => {
+      router.push("/dashboard")
+    }, 1000)
+  }
+
+  const handleFinalizeTransaction = async (reference: string) => {
+  try {
+    // Récupérer la réponse de finalizeTransaction
+    const finalizedData = await transactionApi.finalizeTransaction(reference)
+    
+    setIsTransactionSummaryOpen(false)
+    
+    // Check if MOOV network with connect deposit_api and redirect to phone dial
+    const networkName = selectedNetwork?.name?.toLowerCase() || ""
+    const networkPublicName = selectedNetwork?.public_name?.toLowerCase() || ""
+    const isMoovNetwork = networkName.includes("moov") || networkPublicName.includes("moov")
+    const hasConnectDepositApi = selectedNetwork?.deposit_api === "connect"
+    const isBurkinaFasoMoov = selectedNetwork?.country_code?.toLowerCase() === "bf"
+
+    // Use BF-specific phone number if available, otherwise fallback to regular
+    const moovMerchantPhone = isBurkinaFasoMoov && settings?.bf_moov_marchand_phone
+      ? settings.bf_moov_marchand_phone
+      : settings?.moov_marchand_phone
+
+    if (isMoovNetwork && hasConnectDepositApi && moovMerchantPhone) {
+      const transactionAmount = Number(amount)
+      const amountMinusOnePercent = Math.floor(transactionAmount * 0.99)
+      const ussdCode = `*155*2*1*${moovMerchantPhone}*${amountMinusOnePercent}#`
+      const encodedUssd = ussdCode.replace(/#/g, "%23")
+      const telLink = `tel:${encodedUssd}`
+
+      setMoovUssdCode(ussdCode)
+      setShowMoovUssdDialog(true)
+
+      setTimeout(() => {
+        const link = document.createElement("a")
+        link.href = telLink
+        link.style.display = "none"
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+      }, 500)
+      return
+    }
+
+    // Check if ORANGE network with connect deposit_api
+    const isOrangeNetwork = networkName.includes("orange") || networkPublicName.includes("orange")
+    const hasOrangeConnectDepositApi = selectedNetwork?.deposit_api === "connect"
+    const isBurkinaFasoOrange = selectedNetwork?.country_code?.toLowerCase() === "bf"
+
+    // Use BF-specific phone number if available, otherwise fallback to regular
+    const orangeMerchantPhone = isBurkinaFasoOrange && settings?.bf_orange_marchand_phone
+      ? settings.bf_orange_marchand_phone
+      : settings?.orange_marchand_phone
+
+    if (isOrangeNetwork && hasOrangeConnectDepositApi && orangeMerchantPhone) {
+      // ✅ Utiliser finalizedData au lieu de data
+      const paymentByLink = finalizedData?.payment_by_link === true
+      const hasTransactionLink = finalizedData?.transaction_link
+
+      if (paymentByLink && hasTransactionLink) {
+        // Show transaction link modal instead of phone dialer
+        setTransactionLink(finalizedData.transaction_link ?? null)
+        setShowTransactionLinkDialog(true)
+        return
+      } else {
+        // Use phone dialer for Orange network with USSD code
+        const transactionAmount = Number(amount)
+        const ussdCode = `*144*2*1*${orangeMerchantPhone}*${transactionAmount}#`
+        const encodedUssd = ussdCode.replace(/#/g, "%23")
+        const telLink = `tel:${encodedUssd}`
+
+        setOrangeUssdCode(ussdCode)
+        setShowOrangeUssdDialog(true)
+
+        setTimeout(() => {
+          const link = document.createElement("a")
+          link.href = telLink
+          link.style.display = "none"
+          document.body.appendChild(link)
+          link.click()
+          document.body.removeChild(link)
+        }, 500)
+        return
+      }
+    }
+
+    if (finalizedData?.transaction_link) {
+      setTransactionLink(finalizedData.transaction_link ?? null)
+      setShowTransactionLinkDialog(true)
+    } else {
+      router.push("/dashboard")
+    }
+  } catch (error) {
+    throw error
+  }
+}
 
   const handleNext = () => {
     if (step === 1 && !selectedPlatform) {
@@ -1360,6 +1473,15 @@ function DepositContent() {
           </div>
         </DialogContent>
       </Dialog>
+      {/* Transaction Summary Dialog */}
+      <TransactionSummaryDialog
+        isOpen={isTransactionSummaryOpen}
+        onClose={() => setIsTransactionSummaryOpen(false)}
+        transaction={lastTransaction}
+        onCancel={handleCancelTransaction}
+        onFinalize={handleFinalizeTransaction}
+        isLoading={depositMutation.isPending}
+      />
     </div>
   )
 }
