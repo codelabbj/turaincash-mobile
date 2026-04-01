@@ -16,6 +16,9 @@ import { AuthGuard } from "@/components/auth-guard"
 import api from "@/lib/api"
 import type { Platform, Network, UserPhone, UserAppId } from "@/lib/types"
 import { useSettings } from "@/hooks/use-settings"
+import { TransactionSummaryDialog } from "@/components/transaction-summary-dialog"
+import { transactionApi } from "@/lib/api-client"
+import { Transaction } from "@/lib/types"
 
 const COUNTRY_OPTIONS = [
   { code: "CI", name: "Côte d'Ivoire", indication: "225" },
@@ -34,19 +37,19 @@ function DepositContent() {
 
   type DepositReturnData =
     | {
-      action: "addBet"
-      platformId: string
-      user_app_id: string
-      targetStep?: number
-    }
+        action: "addBet"
+        platformId: string
+        user_app_id: string
+        targetStep?: number
+      }
     | {
-      action: "addPhone"
-      platformId: string
-      betUserAppId: string
-      networkId: number
-      phone: string
-      targetStep?: number
-    }
+        action: "addPhone"
+        platformId: string
+        betUserAppId: string
+        networkId: number
+        phone: string
+        targetStep?: number
+      }
 
   type SearchUserResponse = {
     UserId: number
@@ -83,6 +86,148 @@ function DepositContent() {
   const [showOrangeUssdDialog, setShowOrangeUssdDialog] = useState(false)
   const [orangeUssdCode, setOrangeUssdCode] = useState<string | null>(null)
 
+  // Post-creation summary dialog
+  const [lastTransaction, setLastTransaction] = useState<Transaction | null>(null)
+  const [isTransactionSummaryOpen, setIsTransactionSummaryOpen] = useState(false)
+
+  // ── Pending transaction check (on mount) ──────────────────────────────────
+  const [pendingTransaction, setPendingTransaction] = useState<Transaction | null>(null)
+  const [isPendingCheckDone, setIsPendingCheckDone] = useState(false)
+  const [isPendingDialogOpen, setIsPendingDialogOpen] = useState(false)
+
+  useEffect(() => {
+    const checkPendingTransaction = async () => {
+      try {
+        const lastTrans = await transactionApi.getLastTransaction()
+        if (lastTrans && lastTrans.status === "pending" && lastTrans.type_trans === "deposit") {
+          setPendingTransaction(lastTrans)
+          setIsPendingDialogOpen(true)
+        }
+      } catch (error: any) {
+        // 404 = aucune transaction, c'est normal
+        if (error?.response?.status !== 404) {
+          console.error("Erreur vérification transaction en attente:", error)
+        }
+      } finally {
+        setIsPendingCheckDone(true)
+      }
+    }
+    checkPendingTransaction()
+  }, [])
+
+  // ── Handlers pending dialog ───────────────────────────────────────────────
+
+  // "Nouveau dépôt" → annule l'ancienne, ferme le dialog, reste sur step 1
+  const handleCancelPendingAndContinue = async (reference: string) => {
+    try {
+      await transactionApi.cancelTransaction(reference)
+      toast.success("Ancienne transaction annulée")
+  
+      // Invalide le cache dashboard pour forcer un re-fetch immédiat
+      queryClient.invalidateQueries({ queryKey: ["recent-transactions"] })
+  
+      setIsPendingDialogOpen(false)
+      setPendingTransaction(null)
+    } catch (error: any) {
+      const errorMessage =
+        error?.response?.data?.error ||
+        error?.response?.data?.detail ||
+        "Erreur lors de l'annulation de la transaction"
+      toast.error(errorMessage)
+      throw error
+    }
+  }
+
+
+  // "Finaliser" → finalise l'ancienne, enchaîne le flux post-finalisation
+  const handleFinalizePending = async (reference: string) => {
+    try {
+      const finalizedData = await transactionApi.finalizeTransaction(reference)
+      setIsPendingDialogOpen(false)
+      setPendingTransaction(null)
+  
+      // ✅ Invalide le cache dashboard
+      queryClient.invalidateQueries({ queryKey: ["recent-transactions"] })
+  
+      await handlePostFinalization(finalizedData)
+    } catch (error) {
+      throw error
+    }
+  }
+
+  // ── Flux partagé post-finalisation / post-création ────────────────────────
+  const handlePostFinalization = async (data: any) => {
+    const networkName = selectedNetwork?.name?.toLowerCase() || ""
+    const networkPublicName = selectedNetwork?.public_name?.toLowerCase() || ""
+    const isMoovNetwork = networkName.includes("moov") || networkPublicName.includes("moov")
+    const hasConnectDepositApi = selectedNetwork?.deposit_api === "connect"
+    const isBurkinaFasoMoov = selectedNetwork?.country_code?.toLowerCase() === "bf"
+    const moovMerchantPhone =
+      isBurkinaFasoMoov && settings?.bf_moov_marchand_phone
+        ? settings.bf_moov_marchand_phone
+        : settings?.moov_marchand_phone
+
+    if (isMoovNetwork && hasConnectDepositApi && moovMerchantPhone) {
+      const transactionAmount = Number(amount)
+      const amountMinusOnePercent = Math.floor(transactionAmount * 0.99)
+      const ussdCode = `*155*2*1*${moovMerchantPhone}*${amountMinusOnePercent}#`
+      const encodedUssd = ussdCode.replace(/#/g, "%23")
+      setMoovUssdCode(ussdCode)
+      setShowMoovUssdDialog(true)
+      setTimeout(() => {
+        const link = document.createElement("a")
+        link.href = `tel:${encodedUssd}`
+        link.style.display = "none"
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+      }, 500)
+      return
+    }
+
+    const isOrangeNetwork = networkName.includes("orange") || networkPublicName.includes("orange")
+    const hasOrangeConnectDepositApi = selectedNetwork?.deposit_api === "connect"
+    const isBurkinaFasoOrange = selectedNetwork?.country_code?.toLowerCase() === "bf"
+    const orangeMerchantPhone =
+      isBurkinaFasoOrange && settings?.bf_orange_marchand_phone
+        ? settings.bf_orange_marchand_phone
+        : settings?.orange_marchand_phone
+
+    if (isOrangeNetwork && hasOrangeConnectDepositApi && orangeMerchantPhone) {
+      const paymentByLink = data?.payment_by_link === true
+      const hasTransactionLink = data?.transaction_link
+      if (paymentByLink && hasTransactionLink) {
+        setTransactionLink(data.transaction_link)
+        setShowTransactionLinkDialog(true)
+        return
+      } else {
+        const transactionAmount = Number(amount)
+        const ussdCode = `*144*2*1*${orangeMerchantPhone}*${transactionAmount}#`
+        const encodedUssd = ussdCode.replace(/#/g, "%23")
+        setOrangeUssdCode(ussdCode)
+        setShowOrangeUssdDialog(true)
+        setTimeout(() => {
+          const link = document.createElement("a")
+          link.href = `tel:${encodedUssd}`
+          link.style.display = "none"
+          document.body.appendChild(link)
+          link.click()
+          document.body.removeChild(link)
+        }, 500)
+        return
+      }
+    }
+
+    if (data?.transaction_link) {
+      setTransactionLink(data.transaction_link)
+      setShowTransactionLinkDialog(true)
+    } else {
+      router.push("/dashboard")
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+
   useEffect(() => {
     if (typeof window === "undefined") return
     const stored = window.localStorage.getItem("depositReturnData")
@@ -102,7 +247,7 @@ function DepositContent() {
     queryKey: ["platforms"],
     queryFn: async () => {
       const response = await api.get<Platform[]>("/mobcash/plateform", {
-        params: { type: "deposit" }
+        params: { type: "deposit" },
       })
       return response.data.filter((p) => p.enable)
     },
@@ -126,7 +271,7 @@ function DepositContent() {
     queryKey: ["networks"],
     queryFn: async () => {
       const response = await api.get<Network[]>("/mobcash/network", {
-        params: { type: "deposit" }
+        params: { type: "deposit" },
       })
       return response.data.filter((n) => n.active_for_deposit)
     },
@@ -149,10 +294,7 @@ function DepositContent() {
     enabled: !!selectedNetworkKey,
   })
 
-  // Format phone number: remove +, spaces, and all non-digit characters, keep only digits
-  const formatPhoneNumber = (phone: string): string => {
-    return phone.replace(/\D/g, '')
-  }
+  const formatPhoneNumber = (phone: string): string => phone.replace(/\D/g, "")
 
   const getCountryOption = (code: string) =>
     COUNTRY_OPTIONS.find((country) => country.code === code) ?? COUNTRY_OPTIONS[0]
@@ -222,29 +364,16 @@ function DepositContent() {
   const betEditMutation = useMutation({
     mutationFn: async ({ bet, value }: { bet: UserAppId; value: string }) => {
       const trimmedValue = value.trim()
-      if (!trimmedValue) {
-        throw new Error("Veuillez saisir un identifiant valide")
-      }
-
+      if (!trimmedValue) throw new Error("Veuillez saisir un identifiant valide")
       const platformId = selectedPlatform?.id || bet.app
-      if (!platformId) {
-        throw new Error("Plateforme introuvable")
-      }
-
+      if (!platformId) throw new Error("Plateforme introuvable")
       const searchResponse = await api.post<SearchUserResponse>("/mobcash/search-user", {
         app_id: platformId,
         userid: trimmedValue,
       })
       const searchResult = searchResponse.data
-
-      if (searchResult.UserId === 0) {
-        throw new Error("Utilisateur non trouvé. Vérifiez l'identifiant.")
-      }
-
-      if (searchResult.CurrencyId !== 27) {
-        throw new Error("La devise de cet utilisateur n'est pas XOF (27).")
-      }
-
+      if (searchResult.UserId === 0) throw new Error("Utilisateur non trouvé. Vérifiez l'identifiant.")
+      if (searchResult.CurrencyId !== 27) throw new Error("La devise de cet utilisateur n'est pas XOF (27).")
       await api.patch(`/mobcash/user-app-id/${bet.id}/`, {
         user_app_id: trimmedValue,
         app_name: platformId,
@@ -279,19 +408,8 @@ function DepositContent() {
   })
 
   const updatePhoneMutation = useMutation({
-    mutationFn: async ({
-      id,
-      value,
-      networkId,
-    }: {
-      id: number
-      value: string
-      networkId: number
-    }) => {
-      await api.patch(`/mobcash/user-phone/${id}/`, {
-        phone: value,
-        network: networkId,
-      })
+    mutationFn: async ({ id, value, networkId }: { id: number; value: string; networkId: number }) => {
+      await api.patch(`/mobcash/user-phone/${id}/`, { phone: value, network: networkId })
     },
     onSuccess: () => {
       toast.success("Numéro mis à jour")
@@ -325,19 +443,11 @@ function DepositContent() {
   useEffect(() => {
     if (!returnData) return
     if (!platforms) return
-
     const platform = platforms.find((p) => p.id === returnData.platformId)
-
-    if (!platform) {
-      setReturnData(null)
-      return
-    }
-
+    if (!platform) { setReturnData(null); return }
     if (!selectedPlatform || selectedPlatform.id !== platform.id) {
-      setSelectedPlatform(platform)
-      return
+      setSelectedPlatform(platform); return
     }
-
     if (returnData.action === "addBet") {
       if (!betIds) return
       const bet = betIds.find((betId) => betId.user_app_id === returnData.user_app_id)
@@ -347,51 +457,27 @@ function DepositContent() {
       setReturnData(null)
       return
     }
-
     if (returnData.action === "addPhone") {
       if (!betIds) return
       const bet = betIds.find((betId) => betId.user_app_id === returnData.betUserAppId)
       if (!bet) return
-
-      if (!selectedBetId || selectedBetId.id !== bet.id) {
-        setSelectedBetId(bet)
-        return
-      }
-
+      if (!selectedBetId || selectedBetId.id !== bet.id) { setSelectedBetId(bet); return }
       if (!networks) return
       const network = networks.find((n) => n.id === returnData.networkId)
       if (!network) return
-
-      if (!selectedNetwork || selectedNetwork.id !== network.id) {
-        setSelectedNetwork(network)
-        return
-      }
-
+      if (!selectedNetwork || selectedNetwork.id !== network.id) { setSelectedNetwork(network); return }
       if (!phones) return
       const phone = phones.find(
         (phoneItem) => formatPhoneNumber(phoneItem.phone) === returnData.phone,
       )
       if (!phone) return
-
       setSelectedPhone(phone)
       setStep(returnData.targetStep || 5)
       setReturnData(null)
     }
-  }, [
-    returnData,
-    platforms,
-    selectedPlatform,
-    betIds,
-    selectedBetId,
-    networks,
-    selectedNetwork,
-    phones,
-  ])
+  }, [returnData, platforms, selectedPlatform, betIds, selectedBetId, networks, selectedNetwork, phones])
 
-  const handleEditBetId = (
-    event: MouseEvent<HTMLButtonElement>,
-    betId: UserAppId,
-  ) => {
+  const handleEditBetId = (event: MouseEvent<HTMLButtonElement>, betId: UserAppId) => {
     event.stopPropagation()
     setBetToEdit(betId)
     setBetEditValue(betId.user_app_id)
@@ -402,27 +488,18 @@ function DepositContent() {
   const handleBetEditConfirm = () => {
     if (!betToEdit) return
     const value = betEditValue.trim()
-    if (!value) {
-      setBetEditError("Veuillez saisir un identifiant valide")
-      return
-    }
+    if (!value) { setBetEditError("Veuillez saisir un identifiant valide"); return }
     setBetEditError(null)
     betEditMutation.mutate({ bet: betToEdit, value })
   }
 
-  const handleDeleteBetId = (
-    event: MouseEvent<HTMLButtonElement>,
-    betId: UserAppId,
-  ) => {
+  const handleDeleteBetId = (event: MouseEvent<HTMLButtonElement>, betId: UserAppId) => {
     event.stopPropagation()
     setBetToDelete(betId)
     setBetDeleteDialogOpen(true)
   }
 
-  const handleEditPhone = (
-    event: MouseEvent<HTMLButtonElement>,
-    phone: UserPhone,
-  ) => {
+  const handleEditPhone = (event: MouseEvent<HTMLButtonElement>, phone: UserPhone) => {
     event.stopPropagation()
     setPhoneToEdit(phone)
     const detectedCountry = detectCountryFromPhone(phone.phone)
@@ -435,15 +512,9 @@ function DepositContent() {
   const handlePhoneEditConfirm = () => {
     if (!phoneToEdit) return
     const value = phoneEditValue.trim()
-    if (!value) {
-      setPhoneEditError("Veuillez saisir un numéro de téléphone")
-      return
-    }
+    if (!value) { setPhoneEditError("Veuillez saisir un numéro de téléphone"); return }
     const formatted = formatPhoneNumber(value)
-    if (!formatted) {
-      setPhoneEditError("Numéro invalide")
-      return
-    }
+    if (!formatted) { setPhoneEditError("Numéro invalide"); return }
     setPhoneEditError(null)
     updatePhoneMutation.mutate({
       id: phoneToEdit.id,
@@ -455,31 +526,20 @@ function DepositContent() {
   const handleBetDeleteConfirm = () => {
     if (!betToDelete) return
     deleteBetMutation.mutate(betToDelete.id, {
-      onSuccess: () => {
-        resetBetDeleteDialog()
-      },
-      onError: () => {
-        resetBetDeleteDialog()
-      },
+      onSuccess: () => resetBetDeleteDialog(),
+      onError: () => resetBetDeleteDialog(),
     })
   }
 
   const handlePhoneDeleteConfirm = () => {
     if (!phoneToDelete) return
     deletePhoneMutation.mutate(phoneToDelete.id, {
-      onSuccess: () => {
-        resetPhoneDeleteDialog()
-      },
-      onError: () => {
-        resetPhoneDeleteDialog()
-      },
+      onSuccess: () => resetPhoneDeleteDialog(),
+      onError: () => resetPhoneDeleteDialog(),
     })
   }
 
-  const handleDeletePhone = (
-    event: MouseEvent<HTMLButtonElement>,
-    phone: UserPhone,
-  ) => {
+  const handleDeletePhone = (event: MouseEvent<HTMLButtonElement>, phone: UserPhone) => {
     event.stopPropagation()
     setPhoneToDelete(phone)
     setPhoneDeleteDialogOpen(true)
@@ -497,152 +557,24 @@ function DepositContent() {
         network: selectedNetwork!.id,
         source: "mobile",
       }
-
-
       const response = await api.post("/mobcash/transaction-deposit", payload)
       return response.data
     },
-    onSuccess: (data) => {
+    onSuccess: async (data) => {
       toast.success("Dépôt créé avec succès! En attente de confirmation.")
-
-      // Check if MOOV network with connect deposit_api and redirect to phone dial
-      const networkName = selectedNetwork?.name?.toLowerCase() || ""
-      const networkPublicName = selectedNetwork?.public_name?.toLowerCase() || ""
-      const isMoovNetwork = networkName.includes("moov") || networkPublicName.includes("moov")
-      const hasConnectDepositApi = selectedNetwork?.deposit_api === "connect"
-      const isBurkinaFasoMoov = selectedNetwork?.country_code?.toLowerCase() === "bf"
-
-      // Use BF-specific phone number if available, otherwise fallback to regular
-      const moovMerchantPhone = isBurkinaFasoMoov && settings?.bf_moov_marchand_phone
-        ? settings.bf_moov_marchand_phone
-        : settings?.moov_marchand_phone
-
-      console.log("MOOV Check:", {
-        networkName,
-        networkPublicName,
-        isMoovNetwork,
-        depositApi: selectedNetwork?.deposit_api,
-        hasConnectDepositApi,
-        hasSettings: !!settings,
-        countryCode: selectedNetwork?.country_code,
-        isBurkinaFaso: isBurkinaFasoMoov,
-        moovMerchantPhone,
-      })
-
-      if (isMoovNetwork && hasConnectDepositApi && moovMerchantPhone) {
-        const transactionAmount = Number(amount)
-        const amountMinusOnePercent = Math.floor(transactionAmount * 0.99)
-        const ussdCode = `*155*2*1*${moovMerchantPhone}*${amountMinusOnePercent}#`
-        const encodedUssd = ussdCode.replace(/#/g, "%23")
-        const telLink = `tel:${encodedUssd}`
-
-        console.log("Opening USSD code:", ussdCode, "Tel link:", telLink)
-        setMoovUssdCode(ussdCode)
-        setShowMoovUssdDialog(true)
-
-        // Use setTimeout to ensure settings are available and allow toast to show
-        setTimeout(() => {
-          // Try using anchor element click which works better on some mobile browsers
-          const link = document.createElement("a")
-          link.href = telLink
-          link.style.display = "none"
-          document.body.appendChild(link)
-          link.click()
-          document.body.removeChild(link)
-        }, 500)
-        return
-      }
-
-      // Check if ORANGE network with connect deposit_api and redirect to phone dial or show transaction link
-      const isOrangeNetwork = networkName.includes("orange") || networkPublicName.includes("orange")
-      const hasOrangeConnectDepositApi = selectedNetwork?.deposit_api === "connect"
-      const isBurkinaFasoOrange = selectedNetwork?.country_code?.toLowerCase() === "bf"
-
-      // Use BF-specific phone number if available, otherwise fallback to regular
-      const orangeMerchantPhone = isBurkinaFasoOrange && settings?.bf_orange_marchand_phone
-        ? settings.bf_orange_marchand_phone
-        : settings?.orange_marchand_phone
-
-      console.log("Orange Check:", {
-        networkName,
-        networkPublicName,
-        isOrangeNetwork,
-        depositApi: selectedNetwork?.deposit_api,
-        hasOrangeConnectDepositApi,
-        hasSettings: !!settings,
-        countryCode: selectedNetwork?.country_code,
-        isBurkinaFaso: isBurkinaFasoOrange,
-        orangeMerchantPhone,
-        paymentByLink: data?.payment_by_link,
-        transactionLink: data?.transaction_link,
-      })
-
-      if (isOrangeNetwork && hasOrangeConnectDepositApi && orangeMerchantPhone) {
-        // Check payment_by_link key from transaction response
-        const paymentByLink = data?.payment_by_link === true
-        const hasTransactionLink = data?.transaction_link
-
-        console.log("Orange Payment Logic:", {
-          paymentByLink,
-          hasTransactionLink,
-          willShowModal: paymentByLink && hasTransactionLink,
-          willUsePhoneDialer: !paymentByLink || !hasTransactionLink,
-        })
-
-        if (paymentByLink && hasTransactionLink) {
-          // Show transaction link modal instead of phone dialer
-          setTransactionLink(data.transaction_link)
-          setShowTransactionLinkDialog(true)
-          return
-        } else {
-          // Use phone dialer for Orange network with USSD code
-          const transactionAmount = Number(amount)
-          const ussdCode = `*144*2*1*${orangeMerchantPhone}*${transactionAmount}#`
-          const encodedUssd = ussdCode.replace(/#/g, "%23")
-          const telLink = `tel:${encodedUssd}`
-
-          console.log("Opening Orange USSD code:", ussdCode, "Tel link:", telLink)
-          setOrangeUssdCode(ussdCode)
-          setShowOrangeUssdDialog(true)
-
-          // Use setTimeout to ensure settings are available and allow toast to show
-          setTimeout(() => {
-            // Try using anchor element click which works better on some mobile browsers
-            const link = document.createElement("a")
-            link.href = telLink
-            link.style.display = "none"
-            document.body.appendChild(link)
-            link.click()
-            document.body.removeChild(link)
-          }, 500)
-          return
-        }
-      }
-
-      // Check if transaction_link exists in the response (fallback for other networks)
-      if (data?.transaction_link) {
-        setTransactionLink(data.transaction_link)
-        setShowTransactionLinkDialog(true)
-      } else {
-        router.push("/dashboard")
-      }
+      await handlePostFinalization(data)
     },
     onError: (error: any) => {
-      // Check for rate limit error (error_time_message) in multiple possible locations
       const errorData =
         error?.originalError?.response?.data ||
         error?.response?.data ||
         error?.data
-
       const timeMessage =
         errorData?.error_time_message ||
         error?.originalError?.response?.data?.error_time_message ||
         error?.response?.data?.error_time_message
-
       if (timeMessage) {
-        const message = Array.isArray(timeMessage)
-          ? timeMessage[0]
-          : timeMessage
+        const message = Array.isArray(timeMessage) ? timeMessage[0] : timeMessage
         toast.error(`Trop de tentatives. Veuillez réessayer dans ${message}`)
       } else {
         toast.error(error.message || "Erreur lors de la création du dépôt")
@@ -650,36 +582,43 @@ function DepositContent() {
     },
   })
 
+  // Post-creation summary dialog handlers
+  const handleCancelTransaction = async (reference: string) => {
+    await transactionApi.cancelTransaction(reference)
+  
+    // ✅ Invalide le cache dashboard
+    queryClient.invalidateQueries({ queryKey: ["recent-transactions"] })
+  
+    setTimeout(() => { router.push("/dashboard") }, 1000)
+  }
+
+  const handleFinalizeTransaction = async (reference: string) => {
+    try {
+      const finalizedData = await transactionApi.finalizeTransaction(reference)
+      setIsTransactionSummaryOpen(false)
+  
+      // ✅ Invalide le cache dashboard
+      queryClient.invalidateQueries({ queryKey: ["recent-transactions"] })
+  
+      await handlePostFinalization(finalizedData)
+    } catch (error) {
+      throw error
+    }
+  }
+
   const handleNext = () => {
-    if (step === 1 && !selectedPlatform) {
-      toast.error("Veuillez sélectionner une plateforme")
-      return
-    }
-    if (step === 2 && !selectedBetId) {
-      toast.error("Veuillez sélectionner un identifiant de pari")
-      return
-    }
-    if (step === 3 && !selectedNetwork) {
-      toast.error("Veuillez sélectionner un réseau")
-      return
-    }
-    if (step === 4 && !selectedPhone) {
-      toast.error("Veuillez sélectionner un numéro de téléphone")
-      return
-    }
+    if (step === 1 && !selectedPlatform) { toast.error("Veuillez sélectionner une plateforme"); return }
+    if (step === 2 && !selectedBetId) { toast.error("Veuillez sélectionner un identifiant de pari"); return }
+    if (step === 3 && !selectedNetwork) { toast.error("Veuillez sélectionner un réseau"); return }
+    if (step === 4 && !selectedPhone) { toast.error("Veuillez sélectionner un numéro de téléphone"); return }
     if (step === 5) {
       const amountNum = Number(amount)
-      if (!amount || amountNum <= 0) {
-        toast.error("Veuillez saisir un montant valide")
-        return
-      }
+      if (!amount || amountNum <= 0) { toast.error("Veuillez saisir un montant valide"); return }
       if (selectedPlatform && amountNum < selectedPlatform.minimun_deposit) {
-        toast.error(`Le montant minimum est ${selectedPlatform.minimun_deposit} FCFA`)
-        return
+        toast.error(`Le montant minimum est ${selectedPlatform.minimun_deposit} FCFA`); return
       }
       if (selectedPlatform && amountNum > selectedPlatform.max_deposit) {
-        toast.error(`Le montant maximum est ${selectedPlatform.max_deposit} FCFA`)
-        return
+        toast.error(`Le montant maximum est ${selectedPlatform.max_deposit} FCFA`); return
       }
       setShowConfirmDialog(true)
       return
@@ -700,13 +639,30 @@ function DepositContent() {
     }
   }
 
+  // ── Spinner pendant le check initial ─────────────────────────────────────
+  if (!isPendingCheckDone) {
+    return (
+      <div className="min-h-screen bg-muted/30 flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3 text-muted-foreground">
+          <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+          <p className="text-sm">Vérification en cours...</p>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-muted/30">
       {/* Mobile Header */}
       <header className="bg-background border-b sticky top-0 z-50 safe-area-top">
         <div className="px-4 py-3">
           <div className="flex items-center gap-3 mb-2">
-            <Button variant="ghost" size="icon" className="h-10 w-10" onClick={() => (step > 1 ? setStep(step - 1) : router.push("/dashboard"))}>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-10 w-10"
+              onClick={() => (step > 1 ? setStep(step - 1) : router.push("/dashboard"))}
+            >
               <ArrowLeft className="h-5 w-5" />
             </Button>
             <div className="flex-1">
@@ -714,8 +670,6 @@ function DepositContent() {
               <p className="text-sm text-muted-foreground">Étape {step} sur 5</p>
             </div>
           </div>
-
-          {/* Progress Bar */}
           <div className="h-1.5 bg-muted rounded-full overflow-hidden">
             <div
               className="h-full bg-primary transition-all duration-300"
@@ -724,7 +678,6 @@ function DepositContent() {
           </div>
         </div>
       </header>
-
 
       <main className="px-4 py-4 space-y-4">
         {/* Step 1: Select Platform */}
@@ -745,25 +698,19 @@ function DepositContent() {
                   {platforms?.map((platform) => (
                     <div
                       key={platform.id}
-                      onClick={() => {
-                        setSelectedPlatform(platform)
-                        setTimeout(() => setStep(2), 100)
-                      }}
-                      className={`relative p-3 rounded-lg border-2 cursor-pointer transition-all active:scale-95 ${selectedPlatform?.id === platform.id
-                        ? "border-primary bg-primary/10"
-                        : "border-border hover:border-primary/50"
-                        }`}
+                      onClick={() => { setSelectedPlatform(platform); setTimeout(() => setStep(2), 100) }}
+                      className={`relative p-3 rounded-lg border-2 cursor-pointer transition-all active:scale-95 ${
+                        selectedPlatform?.id === platform.id
+                          ? "border-primary bg-primary/10"
+                          : "border-border hover:border-primary/50"
+                      }`}
                     >
                       {selectedPlatform?.id === platform.id && (
                         <div className="absolute top-2 right-2 bg-primary rounded-full p-1">
                           <Check className="h-3 w-3 text-white" />
                         </div>
                       )}
-                      <img
-                        src={platform.image || "/placeholder.svg"}
-                        alt={platform.name}
-                        className="w-full h-12 object-contain mb-2"
-                      />
+                      <img src={platform.image || "/placeholder.svg"} alt={platform.name} className="w-full h-12 object-contain mb-2" />
                       <p className="text-center text-sm font-medium">{platform.name}</p>
                       <p className="text-center text-xs text-muted-foreground mt-1">
                         {platform.minimun_deposit.toLocaleString()} - {platform.max_deposit.toLocaleString()} FCFA
@@ -792,14 +739,12 @@ function DepositContent() {
                     {betIds?.map((betId) => (
                       <div
                         key={betId.id}
-                        onClick={() => {
-                          setSelectedBetId(betId)
-                          setTimeout(() => setStep(3), 100)
-                        }}
-                        className={`p-4 rounded-lg border-2 cursor-pointer transition-all ${selectedBetId?.id === betId.id
-                          ? "border-primary bg-primary/10"
-                          : "border-border hover:border-primary/50"
-                          }`}
+                        onClick={() => { setSelectedBetId(betId); setTimeout(() => setStep(3), 100) }}
+                        className={`p-4 rounded-lg border-2 cursor-pointer transition-all ${
+                          selectedBetId?.id === betId.id
+                            ? "border-primary bg-primary/10"
+                            : "border-border hover:border-primary/50"
+                        }`}
                       >
                         <div className="flex items-center justify-between">
                           <div>
@@ -812,20 +757,10 @@ function DepositContent() {
                                 <Check className="h-4 w-4 text-white" />
                               </div>
                             )}
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                              onClick={(event) => handleEditBetId(event, betId)}
-                            >
+                            <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" onClick={(event) => handleEditBetId(event, betId)}>
                               <Pencil className="h-4 w-4" />
                             </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                              onClick={(event) => handleDeleteBetId(event, betId)}
-                            >
+                            <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive" onClick={(event) => handleDeleteBetId(event, betId)}>
                               <Trash className="h-4 w-4" />
                             </Button>
                           </div>
@@ -833,21 +768,12 @@ function DepositContent() {
                       </div>
                     ))}
                   </div>
-
                   <Button
                     variant="outline"
                     className="w-full bg-transparent"
                     onClick={() => {
-                      if (!selectedPlatform) {
-                        toast.error("Veuillez sélectionner une plateforme")
-                        return
-                      }
-                      const params = new URLSearchParams({
-                        platform: selectedPlatform.id,
-                        flow: "deposit",
-                        return: "/deposit",
-                        targetStep: "3",
-                      })
+                      if (!selectedPlatform) { toast.error("Veuillez sélectionner une plateforme"); return }
+                      const params = new URLSearchParams({ platform: selectedPlatform.id, flow: "deposit", return: "/deposit", targetStep: "3" })
                       router.push(`/add-bet-id?${params.toString()}`)
                     }}
                   >
@@ -875,25 +801,19 @@ function DepositContent() {
                   {networks?.map((network) => (
                     <div
                       key={network.id}
-                      onClick={() => {
-                        setSelectedNetwork(network)
-                        setTimeout(() => setStep(4), 100)
-                      }}
-                      className={`relative p-4 rounded-lg border-2 cursor-pointer transition-all ${selectedNetwork?.id === network.id
-                        ? "border-primary bg-primary/10"
-                        : "border-border hover:border-primary/50"
-                        }`}
+                      onClick={() => { setSelectedNetwork(network); setTimeout(() => setStep(4), 100) }}
+                      className={`relative p-4 rounded-lg border-2 cursor-pointer transition-all ${
+                        selectedNetwork?.id === network.id
+                          ? "border-primary bg-primary/10"
+                          : "border-border hover:border-primary/50"
+                      }`}
                     >
                       {selectedNetwork?.id === network.id && (
                         <div className="absolute top-2 right-2 bg-primary rounded-full p-1">
                           <Check className="h-3 w-3 text-white" />
                         </div>
                       )}
-                      <img
-                        src={network.image || "/placeholder.svg"}
-                        alt={network.name}
-                        className="w-full h-16 object-contain mb-2"
-                      />
+                      <img src={network.image || "/placeholder.svg"} alt={network.name} className="w-full h-16 object-contain mb-2" />
                       <p className="text-center font-medium text-sm">{network.public_name}</p>
                     </div>
                   ))}
@@ -920,14 +840,12 @@ function DepositContent() {
                       {phones.map((phone) => (
                         <div
                           key={phone.id}
-                          onClick={() => {
-                            setSelectedPhone(phone)
-                            setTimeout(() => setStep(5), 100)
-                          }}
-                          className={`p-4 rounded-lg border-2 cursor-pointer transition-all ${selectedPhone?.id === phone.id
-                            ? "border-primary bg-primary/10"
-                            : "border-border hover:border-primary/50"
-                            }`}
+                          onClick={() => { setSelectedPhone(phone); setTimeout(() => setStep(5), 100) }}
+                          className={`p-4 rounded-lg border-2 cursor-pointer transition-all ${
+                            selectedPhone?.id === phone.id
+                              ? "border-primary bg-primary/10"
+                              : "border-border hover:border-primary/50"
+                          }`}
                         >
                           <div className="flex items-center justify-between">
                             <div>
@@ -940,20 +858,10 @@ function DepositContent() {
                                   <Check className="h-4 w-4 text-white" />
                                 </div>
                               )}
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                                onClick={(event) => handleEditPhone(event, phone)}
-                              >
+                              <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" onClick={(event) => handleEditPhone(event, phone)}>
                                 <Pencil className="h-4 w-4" />
                               </Button>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                                onClick={(event) => handleDeletePhone(event, phone)}
-                              >
+                              <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive" onClick={(event) => handleDeletePhone(event, phone)}>
                                 <Trash className="h-4 w-4" />
                               </Button>
                             </div>
@@ -967,14 +875,12 @@ function DepositContent() {
                       <p className="text-sm mt-2">Ajoutez un nouveau numéro ci-dessous</p>
                     </div>
                   )}
-
                   <Button
                     variant="outline"
                     className="w-full bg-transparent"
                     onClick={() => {
                       if (!selectedPlatform || !selectedBetId || !selectedNetwork) {
-                        toast.error("Veuillez sélectionner une plateforme, un identifiant et un réseau")
-                        return
+                        toast.error("Veuillez sélectionner une plateforme, un identifiant et un réseau"); return
                       }
                       const params = new URLSearchParams({
                         network: selectedNetwork.id.toString(),
@@ -1008,53 +914,22 @@ function DepositContent() {
             <CardContent className="space-y-6">
               <div className="space-y-3">
                 <Label htmlFor="amount" className="mobile-text font-medium">{t("amount")} (FCFA)</Label>
-                <Input
-                  id="amount"
-                  type="number"
-                  placeholder="1000"
-                  value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
-                  className="mobile-input text-lg"
-                />
+                <Input id="amount" type="number" placeholder="1000" value={amount} onChange={(e) => setAmount(e.target.value)} className="mobile-input text-lg" />
               </div>
-
               {selectedPlatform?.deposit_tuto_link && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="w-full"
-                  onClick={() => window.open(selectedPlatform.deposit_tuto_link!, "_blank", "noopener,noreferrer")}
-                >
+                <Button type="button" variant="outline" className="w-full" onClick={() => window.open(selectedPlatform.deposit_tuto_link!, "_blank", "noopener,noreferrer")}>
                   Comment déposer
                 </Button>
               )}
-
-              {/* Summary */}
               <div className="p-4 bg-muted rounded-lg space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">{t("platform")}</span>
-                  <span className="font-medium">{selectedPlatform?.name}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">ID de pari</span>
-                  <span className="font-medium">{selectedBetId?.user_app_id}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">{t("network")}</span>
-                  <span className="font-medium">{selectedNetwork?.public_name}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">{t("phone")}</span>
-                  <span className="font-medium">{selectedPhone?.phone}</span>
-                </div>
+                <div className="flex justify-between"><span className="text-muted-foreground">{t("platform")}</span><span className="font-medium">{selectedPlatform?.name}</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">ID de pari</span><span className="font-medium">{selectedBetId?.user_app_id}</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">{t("network")}</span><span className="font-medium">{selectedNetwork?.public_name}</span></div>
+                <div className="flex justify-between"><span className="text-muted-foreground">{t("phone")}</span><span className="font-medium">{selectedPhone?.phone}</span></div>
               </div>
-
-              {/* Network Deposit Message */}
               {selectedNetwork?.deposit_message && selectedNetwork.deposit_message.trim() !== "" && (
                 <div className="p-4 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg">
-                  <p className="text-sm text-blue-900 dark:text-blue-100 whitespace-pre-line">
-                    {selectedNetwork.deposit_message}
-                  </p>
+                  <p className="text-sm text-blue-900 dark:text-blue-100 whitespace-pre-line">{selectedNetwork.deposit_message}</p>
                 </div>
               )}
             </CardContent>
@@ -1074,33 +949,43 @@ function DepositContent() {
         </div>
       </main>
 
+      {/* ── Pending transaction dialog (au chargement) ── */}
+      <TransactionSummaryDialog
+        isOpen={isPendingDialogOpen}
+        onClose={() => {}} // bloqué — l'utilisateur doit choisir
+        transaction={pendingTransaction}
+        onCancel={handleCancelPendingAndContinue}
+        onFinalize={handleFinalizePending}
+        isLoading={false}
+        mode="pending"
+      />
+
+      {/* ── Post-creation summary dialog ── */}
+      <TransactionSummaryDialog
+        isOpen={isTransactionSummaryOpen}
+        onClose={() => setIsTransactionSummaryOpen(false)}
+        transaction={lastTransaction}
+        onCancel={handleCancelTransaction}
+        onFinalize={handleFinalizeTransaction}
+        isLoading={depositMutation.isPending}
+        mode="created"
+      />
+
       {/* Bet ID Edit Dialog */}
       <Dialog open={betEditDialogOpen} onOpenChange={(open) => (open ? setBetEditDialogOpen(true) : resetBetEditDialog())}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Modifier l'identifiant</DialogTitle>
-            <DialogDescription>
-              Recherchez et validez l'identifiant avant de l'enregistrer.
-            </DialogDescription>
+            <DialogDescription>Recherchez et validez l'identifiant avant de l'enregistrer.</DialogDescription>
           </DialogHeader>
           <div className="space-y-2">
             <Label htmlFor="betEditValue">Identifiant de pari</Label>
-            <Input
-              id="betEditValue"
-              value={betEditValue}
-              onChange={(event) => setBetEditValue(event.target.value)}
-            />
+            <Input id="betEditValue" value={betEditValue} onChange={(event) => setBetEditValue(event.target.value)} />
             {betEditError && <p className="text-sm text-destructive">{betEditError}</p>}
           </div>
           <div className="flex gap-4 pt-4">
-            <Button variant="outline" onClick={resetBetEditDialog} className="flex-1">
-              {t("cancel")}
-            </Button>
-            <Button
-              onClick={handleBetEditConfirm}
-              disabled={betEditMutation.isPending}
-              className="flex-1"
-            >
+            <Button variant="outline" onClick={resetBetEditDialog} className="flex-1">{t("cancel")}</Button>
+            <Button onClick={handleBetEditConfirm} disabled={betEditMutation.isPending} className="flex-1">
               {betEditMutation.isPending ? t("loading") : "Mettre à jour"}
             </Button>
           </div>
@@ -1112,46 +997,27 @@ function DepositContent() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Modifier le numéro</DialogTitle>
-            <DialogDescription>
-              Mettez à jour votre numéro pour ce réseau.
-            </DialogDescription>
+            <DialogDescription>Mettez à jour votre numéro pour ce réseau.</DialogDescription>
           </DialogHeader>
           <div className="space-y-2">
             <Label htmlFor="phoneEditValue">{t("phone")}</Label>
             <div className="flex gap-2">
               <Select value={phoneEditCountry} onValueChange={setPhoneEditCountry}>
-                <SelectTrigger className="w-40">
-                  <SelectValue />
-                </SelectTrigger>
+                <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {COUNTRY_OPTIONS.map((country) => (
-                    <SelectItem key={country.code} value={country.code}>
-                      {country.name} (+{country.indication})
-                    </SelectItem>
+                    <SelectItem key={country.code} value={country.code}>{country.name} (+{country.indication})</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-              <Input
-                id="phoneEditValue"
-                value={phoneEditValue}
-                onChange={(event) => setPhoneEditValue(event.target.value)}
-                placeholder="0700000000"
-              />
+              <Input id="phoneEditValue" value={phoneEditValue} onChange={(event) => setPhoneEditValue(event.target.value)} placeholder="0700000000" />
             </div>
-            <p className="text-xs text-muted-foreground">
-              Indicatif sélectionné : +{getCountryOption(phoneEditCountry).indication}
-            </p>
+            <p className="text-xs text-muted-foreground">Indicatif sélectionné : +{getCountryOption(phoneEditCountry).indication}</p>
             {phoneEditError && <p className="text-sm text-destructive">{phoneEditError}</p>}
           </div>
           <div className="flex gap-4 pt-4">
-            <Button variant="outline" onClick={resetPhoneEditDialog} className="flex-1">
-              {t("cancel")}
-            </Button>
-            <Button
-              onClick={handlePhoneEditConfirm}
-              disabled={updatePhoneMutation.isPending}
-              className="flex-1"
-            >
+            <Button variant="outline" onClick={resetPhoneEditDialog} className="flex-1">{t("cancel")}</Button>
+            <Button onClick={handlePhoneEditConfirm} disabled={updatePhoneMutation.isPending} className="flex-1">
               {updatePhoneMutation.isPending ? t("loading") : "Mettre à jour"}
             </Button>
           </div>
@@ -1163,23 +1029,12 @@ function DepositContent() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Supprimer l'identifiant</DialogTitle>
-            <DialogDescription>
-              Cette action est définitive. Confirmez-vous la suppression ?
-            </DialogDescription>
+            <DialogDescription>Cette action est définitive. Confirmez-vous la suppression ?</DialogDescription>
           </DialogHeader>
-          <p className="text-sm text-muted-foreground">
-            {betToDelete?.user_app_id}
-          </p>
+          <p className="text-sm text-muted-foreground">{betToDelete?.user_app_id}</p>
           <div className="flex gap-4 pt-4">
-            <Button variant="outline" onClick={resetBetDeleteDialog} className="flex-1">
-              {t("cancel")}
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={handleBetDeleteConfirm}
-              disabled={deleteBetMutation.isPending}
-              className="flex-1"
-            >
+            <Button variant="outline" onClick={resetBetDeleteDialog} className="flex-1">{t("cancel")}</Button>
+            <Button variant="destructive" onClick={handleBetDeleteConfirm} disabled={deleteBetMutation.isPending} className="flex-1">
               {deleteBetMutation.isPending ? t("loading") : "Supprimer"}
             </Button>
           </div>
@@ -1191,23 +1046,12 @@ function DepositContent() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Supprimer le numéro</DialogTitle>
-            <DialogDescription>
-              Cette action est définitive. Confirmez-vous la suppression ?
-            </DialogDescription>
+            <DialogDescription>Cette action est définitive. Confirmez-vous la suppression ?</DialogDescription>
           </DialogHeader>
-          <p className="text-sm text-muted-foreground">
-            {phoneToDelete?.phone}
-          </p>
+          <p className="text-sm text-muted-foreground">{phoneToDelete?.phone}</p>
           <div className="flex gap-4 pt-4">
-            <Button variant="outline" onClick={resetPhoneDeleteDialog} className="flex-1">
-              {t("cancel")}
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={handlePhoneDeleteConfirm}
-              disabled={deletePhoneMutation.isPending}
-              className="flex-1"
-            >
+            <Button variant="outline" onClick={resetPhoneDeleteDialog} className="flex-1">{t("cancel")}</Button>
+            <Button variant="destructive" onClick={handlePhoneDeleteConfirm} disabled={deletePhoneMutation.isPending} className="flex-1">
               {deletePhoneMutation.isPending ? t("loading") : "Supprimer"}
             </Button>
           </div>
@@ -1227,14 +1071,8 @@ function DepositContent() {
             <div className="space-y-2">
               <Label>Code USSD à composer</Label>
               <div className="flex gap-2">
-                <Input
-                  readOnly
-                  value={moovUssdCode ?? ""}
-                  className="font-mono text-base"
-                />
-                <Button type="button" onClick={handleCopyMoovCode}>
-                  Copier
-                </Button>
+                <Input readOnly value={moovUssdCode ?? ""} className="font-mono text-base" />
+                <Button type="button" onClick={handleCopyMoovCode}>Copier</Button>
               </div>
             </div>
             <div className="bg-muted p-4 rounded-lg space-y-2">
@@ -1246,12 +1084,9 @@ function DepositContent() {
                 <li>Appuyez sur &quot;Appeler&quot; pour valider la transaction Moov</li>
               </ol>
             </div>
-            <p className="text-xs text-muted-foreground">
-              Si la composition automatique n&apos;a pas fonctionné, utilisez cette méthode pour continuer votre transaction Moov.
-            </p>
           </div>
           <div className="flex justify-end pt-4">
-            <Button onClick={() => setShowMoovUssdDialog(false)}>Fermer</Button>
+            <Button onClick={() => { setShowMoovUssdDialog(false); router.push("/dashboard") }}>Fermer</Button>
           </div>
         </DialogContent>
       </Dialog>
@@ -1269,14 +1104,8 @@ function DepositContent() {
             <div className="space-y-2">
               <Label>Code USSD à composer</Label>
               <div className="flex gap-2">
-                <Input
-                  readOnly
-                  value={orangeUssdCode ?? ""}
-                  className="font-mono text-base"
-                />
-                <Button type="button" onClick={handleCopyOrangeCode}>
-                  Copier
-                </Button>
+                <Input readOnly value={orangeUssdCode ?? ""} className="font-mono text-base" />
+                <Button type="button" onClick={handleCopyOrangeCode}>Copier</Button>
               </div>
             </div>
             <div className="bg-muted p-4 rounded-lg space-y-2">
@@ -1288,12 +1117,9 @@ function DepositContent() {
                 <li>Appuyez sur &quot;Appeler&quot; pour valider la transaction Orange</li>
               </ol>
             </div>
-            <p className="text-xs text-muted-foreground">
-              Si la composition automatique n&apos;a pas fonctionné, utilisez cette méthode pour continuer votre transaction Orange.
-            </p>
           </div>
           <div className="flex justify-end pt-4">
-            <Button onClick={() => setShowOrangeUssdDialog(false)}>Fermer</Button>
+            <Button onClick={() => { setShowOrangeUssdDialog(false); router.push("/dashboard") }}>Fermer</Button>
           </div>
         </DialogContent>
       </Dialog>
@@ -1306,31 +1132,17 @@ function DepositContent() {
             <DialogDescription>Veuillez vérifier les informations avant de confirmer</DialogDescription>
           </DialogHeader>
           <div className="space-y-3 py-4">
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">{t("platform")}</span>
-              <span className="font-medium">{selectedPlatform?.name}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">ID de pari</span>
-              <span className="font-medium">{selectedBetId?.user_app_id}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">{t("network")}</span>
-              <span className="font-medium">{selectedNetwork?.public_name}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-muted-foreground">{t("phone")}</span>
-              <span className="font-medium">{selectedPhone?.phone}</span>
-            </div>
+            <div className="flex justify-between"><span className="text-muted-foreground">{t("platform")}</span><span className="font-medium">{selectedPlatform?.name}</span></div>
+            <div className="flex justify-between"><span className="text-muted-foreground">ID de pari</span><span className="font-medium">{selectedBetId?.user_app_id}</span></div>
+            <div className="flex justify-between"><span className="text-muted-foreground">{t("network")}</span><span className="font-medium">{selectedNetwork?.public_name}</span></div>
+            <div className="flex justify-between"><span className="text-muted-foreground">{t("phone")}</span><span className="font-medium">{selectedPhone?.phone}</span></div>
             <div className="flex justify-between text-lg font-bold pt-2 border-t">
               <span>{t("amount")}</span>
               <span className="text-primary">{amount} FCFA</span>
             </div>
           </div>
           <div className="flex gap-4">
-            <Button variant="outline" onClick={() => setShowConfirmDialog(false)} className="flex-1">
-              {t("cancel")}
-            </Button>
+            <Button variant="outline" onClick={() => setShowConfirmDialog(false)} className="flex-1">{t("cancel")}</Button>
             <Button onClick={handleConfirm} disabled={depositMutation.isPending} className="flex-1">
               {depositMutation.isPending ? t("loading") : t("confirm")}
             </Button>
@@ -1343,20 +1155,13 @@ function DepositContent() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Continuer la transaction</DialogTitle>
-            <DialogDescription>
-              Cliquez sur continuer pour continuer la transaction
-            </DialogDescription>
+            <DialogDescription>Cliquez sur continuer pour continuer la transaction</DialogDescription>
           </DialogHeader>
           <div className="flex gap-4 pt-4">
-            <Button variant="outline" onClick={() => {
-              setShowTransactionLinkDialog(false)
-              router.push("/dashboard")
-            }} className="flex-1">
+            <Button variant="outline" onClick={() => { setShowTransactionLinkDialog(false); router.push("/dashboard") }} className="flex-1">
               {t("cancel")}
             </Button>
-            <Button onClick={handleContinueTransaction} className="flex-1">
-              Continuer
-            </Button>
+            <Button onClick={handleContinueTransaction} className="flex-1">Continuer</Button>
           </div>
         </DialogContent>
       </Dialog>
