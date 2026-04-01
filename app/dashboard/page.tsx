@@ -532,7 +532,9 @@ function DashboardContent() {
               className="w-full justify-start gap-3 h-auto py-3"
               onClick={() => {
                 const telegramUrl = settings?.telegram
-                  ? `https://t.me/${settings.telegram}`
+                  ? settings.telegram.startsWith("http")
+                    ? settings.telegram
+                    : `https://t.me/${settings.telegram}`
                   : "https://t.me/Turaincash"
                 window.open(telegramUrl, "_blank")
                 setMessageMenuOpen(false)
