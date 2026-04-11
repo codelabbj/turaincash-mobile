@@ -51,6 +51,7 @@ export interface UserAppId {
 
 export interface Transaction {
   id: number
+  uid?: string
   user: {
     id: string
     first_name: string

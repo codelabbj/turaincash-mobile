@@ -215,7 +215,14 @@ function TransactionsContent() {
         ) : (
           <div className="space-y-3">
             {filteredTransactions.map((transaction) => (
-              <Card key={transaction.id} className="overflow-hidden">
+              <Card 
+                key={transaction.id} 
+                className="overflow-hidden cursor-pointer active:scale-[0.98] transition-transform"
+                onClick={() => {
+                  sessionStorage.setItem('cached_transaction', JSON.stringify(transaction))
+                  router.push(`/transactions/detail?id=${transaction.id}`)
+                }}
+              >
                 <CardContent className="p-4">
                   {/* Transaction Header */}
                   <div className="flex items-start justify-between mb-3">

@@ -464,7 +464,11 @@ function DashboardContent() {
                 {transactions.map((transaction) => (
                   <div
                     key={transaction.id}
-                    className="flex items-center justify-between p-3 rounded-lg border hover:bg-muted/50 transition-colors active:bg-muted/70"
+                    className="flex items-center justify-between p-3 rounded-lg border hover:bg-muted/50 transition-colors active:bg-muted/70 cursor-pointer"
+                    onClick={() => {
+                      sessionStorage.setItem('cached_transaction', JSON.stringify(transaction))
+                      router.push(`/transactions/detail?id=${transaction.id}`)
+                    }}
                   >
                     <div className="flex items-center gap-3 flex-1 min-w-0">
                       <div className="flex-shrink-0">
