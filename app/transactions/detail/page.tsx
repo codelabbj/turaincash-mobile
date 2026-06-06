@@ -5,19 +5,20 @@ import { useTranslation } from "react-i18next"
 import { useRouter, useSearchParams } from "next/navigation"
 import { 
   ArrowLeft, 
-  Info, 
   Copy, 
   Phone, 
-  DollarSign, 
-  Receipt, 
   Calendar, 
   User,
   CheckCircle2,
-  XCircle,
-  Loader2
+  Loader2,
+  RefreshCw,
+  AlertCircle,
+  Smartphone,
+  CreditCard,
+  FileText,
+  Contact
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent } from "@/components/ui/card"
 import { AuthGuard } from "@/components/auth-guard"
 import api from "@/lib/api"
 import type { Transaction, Network } from "@/lib/types"
@@ -115,182 +116,265 @@ function TransactionDetailContent() {
     toast.success("Copié dans le presse-papier")
   }
 
-  const getStatusInfo = (status: string) => {
-    const s = status.toLowerCase()
+  const getStatusIcon = (status: string | undefined) => {
+    const s = status?.toLowerCase()
     switch (s) {
+      case "success":
+      case "completed":
       case "accept":
-        return {
-          icon: <CheckCircle2 className="h-5 w-5 text-emerald-500" />,
-          bgColor: "bg-emerald-50",
-          textColor: "text-emerald-700",
-          message: "Transaction effectuée avec succès"
-        }
+      case "approve":
+        return (
+            <div className="w-16 h-16 bg-green-500 rounded-full flex items-center justify-center mb-3 shadow-sm">
+                <CheckCircle2 size={32} className="text-white" />
+            </div>
+        )
+      case "pending":
+      case "init_payment":
+        return (
+            <div className="w-16 h-16 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center mb-3">
+                <RefreshCw size={32} className="text-gray-400 animate-[spin_3s_linear_infinite]" />
+            </div>
+        )
+      case "failed":
       case "error":
       case "annuler":
       case "fail":
       case "reject":
-        return {
-          icon: <XCircle className="h-5 w-5 text-red-500" />,
-          bgColor: "bg-red-50",
-          textColor: "text-red-700",
-          message: s === "annuler" ? "La transaction a été annulée" : "La transaction a échoué"
-        }
-      case "init_payment":
-      case "pending":
+        return (
+            <div className="w-16 h-16 bg-red-500 rounded-full flex items-center justify-center mb-3 shadow-sm">
+                <AlertCircle size={32} className="text-white" />
+            </div>
+        )
       default:
-        return {
-          icon: <Info className="h-5 w-5 text-blue-500" />,
-          bgColor: "bg-blue-50",
-          textColor: "text-blue-700",
-          message: "Transaction en cours"
-        }
+        return (
+            <div className="w-16 h-16 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center mb-3">
+                <AlertCircle size={32} className="text-gray-400" />
+            </div>
+        )
     }
   }
 
-  const statusInfo = getStatusInfo(transaction.status)
+  const getStatusColor = (status: string | undefined) => {
+    const s = status?.toLowerCase()
+    switch (s) {
+      case "success":
+      case "completed":
+      case "accept":
+      case "approve":
+        return "text-emerald-500"
+      case "pending":
+      case "init_payment":
+        return "text-amber-500"
+      case "failed":
+      case "error":
+      case "annuler":
+      case "fail":
+      case "reject":
+        return "text-red-500"
+      default:
+        return "text-slate-500"
+    }
+  }
+
+  const getStatusText = (status: string | undefined) => {
+    const s = status?.toLowerCase()
+    switch (s) {
+      case "success":
+      case "completed":
+      case "accept":
+      case "approve":
+        return "Transaction effectuée avec succès"
+      case "pending":
+      case "init_payment":
+        return "Transaction en cours"
+      case "failed":
+      case "error":
+      case "annuler":
+      case "fail":
+      case "reject":
+        return s === "annuler" ? "La transaction a été annulée" : "La transaction a échoué"
+      default:
+        return "Inconnu"
+    }
+  }
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 pb-12">
+    <div className="min-h-screen bg-slate-50 dark:bg-[#0A0A0A] pb-12">
       {/* Header */}
-      <header className="px-4 py-4 flex items-center sticky top-0 z-10 bg-white dark:bg-slate-900 border-b w-full">
-        <Button variant="ghost" size="icon" className="h-10 w-10 rounded-2xl bg-white dark:bg-slate-800 border shadow-sm" onClick={() => router.back()}>
-          <ArrowLeft className="h-6 w-6" />
+      <header className="px-4 py-4 flex items-center sticky top-0 z-10 bg-slate-50/80 dark:bg-[#0A0A0A]/80 backdrop-blur-md w-full">
+        <Button variant="ghost" size="icon" className="h-10 w-10 rounded-full hover:bg-slate-200 dark:hover:bg-slate-800" onClick={() => router.back()}>
+          <ArrowLeft className="h-5 w-5" />
         </Button>
-        <h1 className="text-lg font-bold flex-1 text-center pr-10">Détails de la transaction</h1>
+        <h1 className="text-xl font-bold flex-1 text-center pr-10">Détails du {transaction.type_trans === "deposit" ? "Dépôt" : "Retrait"}</h1>
       </header>
 
-      <main className="px-4 py-4 space-y-6">
-        {/* Amount Section */}
-        <div className="text-center pt-2 pb-4">
-          <h2 className="text-4xl font-bold text-slate-900 dark:text-white tracking-tight">
-            XOF {transaction.amount.toLocaleString()}
+      <main className="px-4 pb-4 w-full flex flex-col items-center">
+        <div className="mt-0.5 relative">
+          {getStatusIcon(transaction.status)}
+        </div>
+
+        <div className="flex items-center justify-center gap-2 mb-0">
+          <h2 className={`text-lg font-bold ${getStatusColor(transaction.status)}`}>
+            {getStatusText(transaction.status)}
           </h2>
         </div>
-
-        {/* Status Message Banner */}
-        <div className={`rounded-3xl p-6 flex items-start gap-4 border ${statusInfo.bgColor} dark:bg-opacity-10 ${statusInfo.textColor} shadow-md`}>
-          <div className="mt-1 flex-shrink-0">
-             {statusInfo.icon}
-          </div>
-          <div>
-            <p className="font-bold text-lg mb-0.5">Statut</p>
-            <p className="text-sm font-medium opacity-90 leading-relaxed">{statusInfo.message}</p>
-          </div>
+        <p className="text-gray-400 text-xs mb-2">
+           {transaction.type_trans === "deposit" ? "Dépôt" : "Retrait"} {(transaction.status?.toLowerCase() === "pending" || transaction.status?.toLowerCase() === "init_payment") ? "en cours" : ""}
+        </p>
+        <div className="text-2xl font-bold dark:text-white text-slate-900 mb-3">
+            XOF {transaction.amount.toLocaleString()}
         </div>
 
-        {/* Transaction Information Card */}
-        <Card className="border-none shadow-lg rounded-[32px] overflow-hidden bg-white dark:bg-slate-900">
-          <CardContent className="p-6 space-y-7">
-            <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2">Détails du paiement</h3>
-
-            <div className="space-y-6">
-              {/* Application Row */}
-              <div className="flex items-start gap-4">
-                <div className="w-12 h-12 rounded-xl bg-slate-50 dark:bg-slate-800 border dark:border-slate-700 flex items-center justify-center overflow-hidden flex-shrink-0">
-                  {transaction.app_details?.image ? (
-                    <img src={transaction.app_details.image} alt="" className="w-full h-full object-cover" />
-                  ) : (
-                    <div className="w-full h-full bg-primary/20 flex items-center justify-center">
-                        <span className="text-primary text-[10px] font-bold">APP</span>
-                    </div>
-                  )}
-                </div>
-                <div className="flex-1 min-w-0 border-b dark:border-slate-800 pb-3">
-                  <p className="text-sm font-medium text-slate-400 mb-1">Application</p>
-                  <p className="text-lg font-bold text-slate-900 dark:text-white truncate">
-                    {transaction.app_details?.name || transaction.app}
-                  </p>
-                </div>
-              </div>
-
-              {/* Network Row */}
-              <div className="flex items-start gap-4">
-                <div className="w-12 h-12 rounded-xl bg-slate-50 dark:bg-slate-800 border dark:border-slate-700 flex items-center justify-center overflow-hidden flex-shrink-0 p-1">
-                  {network?.image ? (
-                    <img src={network.image} alt="" className="w-full h-full object-contain" />
-                  ) : (
-                    <Phone className="h-6 w-6 text-blue-400" />
-                  )}
-                </div>
-                <div className="flex-1 min-w-0 border-b dark:border-slate-800 pb-3">
-                  <p className="text-sm font-medium text-slate-400 mb-1">Réseau</p>
-                  <p className="text-lg font-bold text-slate-900 dark:text-white truncate">
-                    {network?.public_name || "N/A"}
-                  </p>
-                </div>
-              </div>
-
-              {/* Number Row */}
-              <div className="flex items-start gap-4">
-                <div className="w-12 h-12 rounded-xl bg-slate-50 dark:bg-slate-800 border dark:border-slate-700 flex items-center justify-center flex-shrink-0">
-                  <Phone className="h-6 w-6 text-slate-400" />
-                </div>
-                <div className="flex-1 min-w-0 border-b dark:border-slate-800 pb-3">
-                  <p className="text-sm font-medium text-slate-400 mb-1">Numéro</p>
-                  <p className="text-lg font-bold text-slate-900 dark:text-white">
-                    {transaction.phone_number}
-                  </p>
-                </div>
-              </div>
-
-              {/* Reference Row */}
-              <div className="flex items-start gap-4">
-                <div className="w-12 h-12 rounded-xl bg-slate-50 dark:bg-slate-800 border dark:border-slate-700 flex items-center justify-center flex-shrink-0">
-                  <Receipt className="h-6 w-6 text-slate-400" />
-                </div>
-                <div className="flex-1 min-w-0 border-b dark:border-slate-800 pb-3 flex items-center justify-between gap-2">
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium text-slate-400 mb-1">Référence</p>
-                    <p className="text-base font-bold text-slate-900 dark:text-white break-all leading-tight">
-                      {transaction.reference}
-                    </p>
-                  </div>
-                  <Button 
-                    variant="ghost" 
-                    size="icon" 
-                    className="h-10 w-10 flex-shrink-0 rounded-full hover:bg-primary/10" 
-                    onClick={() => handleCopy(transaction.reference)}
-                  >
-                    <Copy className="h-5 w-5 text-primary" />
-                  </Button>
-                </div>
-              </div>
-
-              {/* Date Row */}
-              <div className="flex items-start gap-4">
-                <div className="w-12 h-12 rounded-xl bg-primary/5 flex items-center justify-center flex-shrink-0">
-                  <Calendar className="h-6 w-6 text-primary" />
-                </div>
-                <div className="flex-1 min-w-0 border-b dark:border-slate-800 pb-3">
-                  <p className="text-sm font-medium text-slate-400 mb-1">Date</p>
-                  <p className="text-lg font-bold text-slate-900 dark:text-white">
-                    {formatDate(transaction.created_at)}
-                  </p>
-                </div>
-              </div>
-
-              {/* App ID Row */}
-              <div className="flex items-start gap-4">
-                <div className="w-12 h-12 rounded-xl bg-primary/5 flex items-center justify-center flex-shrink-0">
-                    <User className="h-6 w-6 text-primary" />
-                </div>
-                <div className="flex-1 min-w-0 pb-1">
-                  <p className="text-sm font-medium text-slate-400 mb-1">
-                    Application ID
-                  </p>
-                  <p className="text-lg font-bold text-slate-900 dark:text-white">
-                    {transaction.user_app_id}
-                  </p>
-                </div>
-              </div>
+        {/* Message Box */}
+        <div className="w-full bg-[#EBF5FF] border-[#D1E9FF] dark:bg-blue-900/10 dark:border-blue-900/30 rounded-xl p-2 mb-3 border">
+            <div className="flex items-center gap-1.5 mb-0.5">
+                <AlertCircle size={14} className="text-blue-400" />
+                <span className="font-bold text-[#1E3A8A] dark:text-blue-300 text-xs">Message</span>
             </div>
-          </CardContent>
-        </Card>
+            <p className="text-[#1E3A8A] dark:text-blue-200 text-xs leading-snug">
+                {(transaction.status?.toLowerCase() === "pending" || transaction.status?.toLowerCase() === "init_payment") ? `${transaction.type_trans === "deposit" ? "Dépôt" : "Retrait"} en cours` : "Paiement effectué avec succès."}
+            </p>
+        </div>
 
-        {/* Contact Support Button */}
-        <div className="pt-4 pb-10">
-          <Button 
-            className="w-full h-16 rounded-[24px] bg-primary text-primary-foreground text-xl font-bold shadow-xl flex items-center justify-center gap-3"
+        {/* USSD Box */}
+        {(transaction.status?.toLowerCase() === "pending" || transaction.status?.toLowerCase() === "init_payment") && transaction.ussd_code && (
+            <div className="w-full bg-[#EBF5FF] border-[#D1E9FF] dark:bg-blue-900/10 dark:border-blue-900/30 rounded-xl p-2 mb-3 border">
+                <div className="flex items-center justify-between gap-1.5 mb-2">
+                    <div className="flex items-center gap-1.5">
+                        <Smartphone size={14} className="text-blue-400" />
+                        <span className="font-bold text-[#1E3A8A] dark:text-blue-300 text-xs">Paiement USSD</span>
+                    </div>
+                </div>
+                
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3 bg-white/50 dark:bg-black/20 p-2.5 rounded-lg border border-blue-200/50 dark:border-blue-900/30">
+                    <span className="font-mono text-base sm:text-lg font-bold tracking-widest dark:text-white text-slate-900 break-all">
+                        {transaction.ussd_code}
+                    </span>
+                    <div className="flex gap-1.5 shrink-0">
+                        <button
+                            onClick={() => window.location.href = `tel:${encodeURIComponent(transaction.ussd_code!)}`}
+                            className="flex-1 sm:flex-none px-3 py-2 sm:py-1.5 bg-blue-600 text-white rounded-md text-[11px] sm:text-[10px] font-bold flex items-center justify-center gap-1.5 transition-all active:scale-95"
+                        >
+                            <Phone size={12} fill="white" />
+                            Appeler
+                        </button>
+                        <button
+                            onClick={() => handleCopy(transaction.ussd_code!)}
+                            className="flex-1 sm:flex-none px-3 py-2 sm:py-1.5 rounded-md border text-[11px] sm:text-[10px] font-bold flex items-center justify-center gap-1.5 transition-all active:scale-95 border-blue-100 bg-white text-blue-600 dark:border-slate-800 dark:bg-slate-800 dark:text-blue-400"
+                        >
+                            <Copy size={12} />
+                            Copier
+                        </button>
+                    </div>
+                </div>
+            </div>
+        )}
+
+        {/* Transaction Link */}
+        {(transaction.status?.toLowerCase() === "pending" || transaction.status?.toLowerCase() === "init_payment") && transaction.transaction_link && (
+            <div className="w-full mb-4">
+                <a
+                    href={transaction.transaction_link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="w-full py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl text-lg font-bold transition-all shadow-lg flex items-center justify-center gap-3"
+                >
+                    Continuer le paiement
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                    </svg>
+                </a>
+            </div>
+        )}
+
+        {/* Details Card */}
+        <div className="w-full bg-white dark:bg-[#1a1a1a] border border-gray-100 dark:border-gray-800 rounded-2xl p-3 shadow-sm mb-3">
+            <h3 className="text-sm font-bold text-slate-900 dark:text-white mb-2">
+                Informations du {transaction.type_trans === "deposit" ? "Dépôt" : "Retrait"}
+            </h3>
+            <div className="space-y-2">
+                <div className="flex items-center justify-between border-b border-gray-100 dark:border-gray-800 pb-1.5">
+                    <span className="text-gray-400 text-xs">Type</span>
+                    <span className="font-bold uppercase text-xs dark:text-white text-slate-900">{transaction.type_trans === "deposit" ? "Dépôt" : "Retrait"}</span>
+                </div>
+
+                <div className="flex items-start gap-4">
+                    <div className="w-8 h-8 flex items-center justify-center shrink-0">
+                        <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white overflow-hidden p-1">
+                        {transaction.app_details?.image ? (
+                            <img src={transaction.app_details.image} alt="" className="w-full h-full object-cover" />
+                        ) : (
+                            <CreditCard size={16} />
+                        )}
+                        </div>
+                    </div>
+                    <div className="flex flex-col flex-1 border-b border-gray-100 dark:border-gray-800 pb-1.5">
+                        <span className="text-gray-400 text-[10px]">Application</span>
+                        <span className="font-semibold text-sm dark:text-white text-slate-900">{transaction.app_details?.name || transaction.app || "N/A"}</span>
+                    </div>
+                </div>
+
+                <div className="flex items-start gap-4">
+                    <div className="w-8 h-8 flex items-center justify-center shrink-0">
+                        <Phone className="text-gray-400" size={16} />
+                    </div>
+                    <div className="flex flex-col flex-1 border-b border-gray-100 dark:border-gray-800 pb-1.5">
+                        <span className="text-gray-400 text-[10px]">Numéro</span>
+                        <span className="font-semibold text-sm dark:text-white text-slate-900">{transaction.phone_number}</span>
+                    </div>
+                </div>
+
+                <div className="flex items-start gap-4">
+                    <div className="w-8 h-8 flex items-center justify-center shrink-0 text-gray-400">
+                        <span className="font-bold text-lg">$</span>
+                    </div>
+                    <div className="flex flex-col flex-1 border-b border-gray-100 dark:border-gray-800 pb-1.5">
+                        <span className="text-gray-400 text-[10px]">Montant</span>
+                        <span className="font-semibold text-sm dark:text-white text-slate-900">XOF {transaction.amount.toLocaleString()}</span>
+                    </div>
+                </div>
+
+                <div className="flex items-start gap-4">
+                    <div className="w-8 h-8 flex items-center justify-center shrink-0">
+                        <FileText className="text-gray-400" size={16} />
+                    </div>
+                    <div className="flex flex-col flex-1 border-b border-gray-100 dark:border-gray-800 pb-1.5">
+                        <span className="text-gray-400 text-[10px]">Référence</span>
+                        <div className="flex items-center justify-between">
+                            <span className="font-semibold text-sm dark:text-white text-slate-900 truncate max-w-[180px]">{transaction.reference}</span>
+                            <button onClick={() => handleCopy(transaction.reference)} className="text-blue-400 hover:text-blue-500">
+                                <Copy size={16} />
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="flex items-start gap-4">
+                    <div className="w-8 h-8 flex items-center justify-center shrink-0">
+                        <Calendar className="text-gray-400" size={16} />
+                    </div>
+                    <div className="flex flex-col flex-1 border-b border-gray-100 dark:border-gray-800 pb-1.5">
+                        <span className="text-gray-400 text-[10px]">Date</span>
+                        <span className="font-semibold text-sm dark:text-white text-slate-900">
+                            {formatDate(transaction.created_at)}
+                        </span>
+                    </div>
+                </div>
+
+                <div className="flex items-start gap-4">
+                    <div className="w-8 h-8 flex items-center justify-center shrink-0">
+                        <Contact className="text-gray-400" size={16} />
+                    </div>
+                    <div className="flex flex-col flex-1">
+                        <span className="text-gray-400 text-[10px]">{transaction.app || "App"} ID</span>
+                        <span className="font-semibold text-sm dark:text-white text-slate-900">{transaction.user_app_id || "N/A"}</span>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+        <button
             onClick={() => {
               const phone = settings?.whatsapp_phone || "0594811767"
               const firstName = user?.first_name || "Utilisateur"
@@ -308,11 +392,18 @@ function TransactionDetailContent() {
               const encodedMsg = encodeURIComponent(message)
               window.open(`https://wa.me/${phone}?text=${encodedMsg}`, '_blank')
             }}
-          >
-            <Phone className="h-6 w-6" />
+            className="w-full py-3 bg-[#ffdedb] hover:bg-[#ffcfcc] text-[#ff6b62] rounded-xl text-base font-bold transition-colors shadow-sm mt-3"
+        >
             Contacter le support
-          </Button>
-        </div>
+        </button>
+
+        <button
+            onClick={() => router.push("/transactions")}
+            className="w-full py-3 bg-[#ffdedb] hover:bg-[#ffcfcc] text-[#ff6b62] rounded-xl text-base font-bold transition-colors shadow-sm mt-3 mb-8"
+        >
+            Retour à l'historique
+        </button>
+
       </main>
     </div>
   )

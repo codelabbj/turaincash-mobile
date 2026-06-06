@@ -1,10 +1,10 @@
 "use client"
 
-import { useQuery } from "@tanstack/react-query"
+import { useQuery, useInfiniteQuery } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
 import { useRouter } from "next/navigation"
-import { useState, useEffect } from "react"
-import { ArrowDownCircle, ArrowUpCircle, LogOut, Bell, Gift, Moon, Sun, Ticket, UserCircle, MessageCircle } from "lucide-react"
+import { useState, useEffect, useRef } from "react"
+import { ArrowDownCircle, ArrowUpCircle, LogOut, Bell, Gift, Moon, Sun, Ticket, UserCircle, MessageCircle, Loader2 } from "lucide-react"
 import type { PaginatedResponse, Notification } from "@/lib/types"
 import { useTheme } from "next-themes"
 import { Button } from "@/components/ui/button"
@@ -42,22 +42,42 @@ function DashboardContent() {
   // Dans dashboard/page.tsx
 // Remplace la query "recent-transactions" par ceci :
 
-  const { data: transactions, isLoading } = useQuery({
+  const { 
+    data: infiniteTransactions, 
+    isLoading,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage
+  } = useInfiniteQuery({
     queryKey: ["recent-transactions"],
-    queryFn: async () => {
+    queryFn: async ({ pageParam = 1 }) => {
       const response = await api.get<{
         count: number
+        next: string | null
         results: Transaction[]
       }>("/mobcash/transaction-history", {
-        params: { page: 1, page_size: 5 },
+        params: { page: pageParam, page_size: 10 },
       })
-      return response.data.results
+      return response.data
+    },
+    initialPageParam: 1,
+    getNextPageParam: (lastPage, allPages) => {
+      return lastPage.next ? allPages.length + 1 : undefined
     },
     refetchInterval: 30000,
-    refetchOnWindowFocus: true,
-    refetchOnMount: "always",
-    staleTime: 0,
   })
+
+  const transactions = infiniteTransactions?.pages.flatMap(page => page.results) || []
+
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
+
+  const handleScroll = () => {
+    if (!scrollContainerRef.current || isFetchingNextPage || !hasNextPage) return
+    const { scrollTop, scrollHeight, clientHeight } = scrollContainerRef.current
+    if (scrollTop + clientHeight >= scrollHeight - 50) {
+      fetchNextPage()
+    }
+  }
 
   type AdvertisementEntry = {
     enable?: boolean
@@ -460,7 +480,11 @@ function DashboardContent() {
                 <p className="text-sm">{t("noData")}</p>
               </div>
             ) : (
-              <div className="space-y-2">
+              <div 
+                ref={scrollContainerRef}
+                onScroll={handleScroll}
+                className="space-y-2 h-[320px] overflow-y-auto pr-1 pb-4"
+              >
                 {transactions.map((transaction) => (
                   <div
                     key={transaction.id}
@@ -495,6 +519,11 @@ function DashboardContent() {
                     </div>
                   </div>
                 ))}
+                {isFetchingNextPage && (
+                  <div className="flex justify-center py-4">
+                    <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                  </div>
+                )}
               </div>
             )}
           </CardContent>
