@@ -19,6 +19,8 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import api from "@/lib/api"
 import { saveAuthData, type AuthResponse } from "@/lib/auth"
 import { unifiedFcmService } from "@/lib/firebase"
+import { signInWithGoogle } from "@/lib/google-auth"
+import { GoogleButton } from "@/components/google-button"
 
 const loginSchema = z.object({
   email_or_phone: z.string().min(1, "Ce champ est requis"),
@@ -31,6 +33,7 @@ export default function LoginPage() {
   const { t } = useTranslation()
   const router = useRouter()
   const [isLoading, setIsLoading] = useState(false)
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
   const [rememberMe, setRememberMe] = useState(false)
   const [isForgotPassword, setIsForgotPassword] = useState(false)
@@ -53,8 +56,11 @@ export default function LoginPage() {
     resolver: zodResolver(loginSchema),
   })
 
-  const onSubmit = async (data: LoginFormData) => {
-    setIsLoading(true)
+  const handleGoogleSignIn = async () => {
+    // Géré par GoogleButton — handler conservé pour compatibilité si besoin
+  }
+
+  const onSubmit = async (data: LoginFormData) => {    setIsLoading(true)
     try {
       const response = await api.post<AuthResponse>("/auth/login", data)
       saveAuthData(response.data)
@@ -457,6 +463,9 @@ export default function LoginPage() {
               <Button type="submit" className="w-full mobile-button" disabled={isLoading}>
                 {isLoading ? t("loading") : t("loginButton")}
               </Button>
+
+              {/* Bouton Google */}
+              <GoogleButton mode="login" disabled={isLoading} />
             </form>
           )}
         </CardContent>

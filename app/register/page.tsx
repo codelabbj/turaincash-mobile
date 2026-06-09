@@ -16,6 +16,7 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import api from "@/lib/api"
 import { useSettings } from "@/hooks/use-settings"
+import { GoogleButton } from "@/components/google-button"
 
 const registerSchema = z.object({
   first_name: z.string().min(1, "Le prénom est requis"),
@@ -203,6 +204,9 @@ export default function RegisterPage() {
             <Button type="submit" className="w-full" disabled={isLoading || settingsLoading}>
               {isLoading ? t("loading") : t("registerButton")}
             </Button>
+
+            {/* Bouton Google */}
+            <GoogleButton mode="register" disabled={isLoading || settingsLoading} />
           </form>
         </CardContent>
         <CardFooter className="flex flex-col space-y-2">

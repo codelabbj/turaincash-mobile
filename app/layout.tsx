@@ -91,6 +91,8 @@ export default function RootLayout({
             `,
           }}
         />
+        {/* Google Identity Services — nécessaire pour le Sign-In sur web/PWA */}
+        <script src="https://accounts.google.com/gsi/client" async defer />
         <Providers>
           <MobileBackButtonHandler />
           <UpdateCheck />
