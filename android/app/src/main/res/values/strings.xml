@@ -4,4 +4,5 @@
     <string name="title_activity_main">TURAINCASH</string>
     <string name="package_name">com.turnaicash.app</string>
     <string name="custom_url_scheme">com.turnaicash.app</string>
+    <string name="server_client_id">484514830460-v2qnn4lrsbiesfatki7qjgnl8d6s82ig.apps.googleusercontent.com</string>
 </resources>
