@@ -16,7 +16,7 @@ export async function signInWithGoogle(): Promise<GoogleAuthResult> {
   const platform = Capacitor.getPlatform()
 
   try {
-    let token: string | null = null
+    let idToken: string | null = null
 
     if (platform === "android" || platform === "ios") {
       // ── Natif Capacitor ─────────────────────────────────────────────
@@ -26,23 +26,34 @@ export async function signInWithGoogle(): Promise<GoogleAuthResult> {
       await GoogleAuth.initialize()
       const googleUser = await GoogleAuth.signIn()
       console.log("Google user:", googleUser)
-      token = googleUser?.serverAuthCode ?? googleUser?.authentication?.idToken ?? null
+      idToken = (googleUser as any)?.idToken ?? googleUser?.authentication?.idToken ?? null
 
-      if (!token) {
+      // Decode and log token to check audience
+      if (idToken) {
+        try {
+          const decoded = JSON.parse(atob(idToken.split('.')[1]));
+          console.log("Google token payload:", decoded);
+          console.log("Google token audience (aud):", decoded.aud);
+        } catch(e) {
+          console.error("Error decoding token:", e);
+        }
+      }
+
+      if (!idToken) {
         return { success: false, error: "Impossible d'obtenir le token Google" }
       }
     } else {
       // ── Web : popup OAuth2 avec google.accounts.oauth2 ──────────────
-      token = await googlePopupSignIn()
+      idToken = await googlePopupSignIn()
 
-      if (!token) {
+      if (!idToken) {
         return { success: false, error: "Connexion Google annulée" }
       }
     }
 
     // ── Envoi au backend ────────────────────────────────────────────
     const response = await api.post<AuthResponse>("/auth/google", {
-      code: token,
+      id_token: idToken,
     })
     saveAuthData(response.data)
     return { success: true }
