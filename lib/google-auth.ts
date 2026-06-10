@@ -16,7 +16,7 @@ export async function signInWithGoogle(): Promise<GoogleAuthResult> {
   const platform = Capacitor.getPlatform()
 
   try {
-    let idToken: string | null = null
+    let token: string | null = null
 
     if (platform === "android" || platform === "ios") {
       // ── Natif Capacitor ─────────────────────────────────────────────
@@ -26,29 +26,34 @@ export async function signInWithGoogle(): Promise<GoogleAuthResult> {
       await GoogleAuth.initialize()
       const googleUser = await GoogleAuth.signIn()
       console.log("Google user:", googleUser)
-      idToken = googleUser?.authentication?.idToken ?? null
+      token = googleUser?.serverAuthCode ?? googleUser?.authentication?.idToken ?? null
 
-      if (!idToken) {
+      if (!token) {
         return { success: false, error: "Impossible d'obtenir le token Google" }
       }
     } else {
       // ── Web : popup OAuth2 avec google.accounts.oauth2 ──────────────
-      idToken = await googlePopupSignIn()
+      token = await googlePopupSignIn()
 
-      if (!idToken) {
+      if (!token) {
         return { success: false, error: "Connexion Google annulée" }
       }
     }
 
     // ── Envoi au backend ────────────────────────────────────────────
     const response = await api.post<AuthResponse>("/auth/google", {
-      id_token: idToken,
+      code: token,
     })
     saveAuthData(response.data)
     return { success: true }
   } catch (error: any) {
     console.error("Google auth error:", error)
+    console.error("Error response:", error.response?.data)
     const message =
+      error?.response?.data?.details ||
+      error?.response?.data?.detail ||
+      error?.response?.data?.error ||
+      error?.response?.data?.message ||
       error?.message || error?.error || "Erreur lors de la connexion avec Google"
     return { success: false, error: message }
   }
