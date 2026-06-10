@@ -9,11 +9,8 @@ export interface GoogleAuthResult {
 
 /**
  * Lance le flow Google Sign-In adapté à la plateforme :
- * - Android/iOS : utilise @codetrix-studio/capacitor-google-auth (natif)
- * - Web          : ouvre un popup Google Identity Services
- *
- * Dans les deux cas, récupère un idToken et l'envoie à POST /auth/google.
- * Retourne { success: true } si la connexion réussit.
+ * - Android/iOS : Capacitor GoogleAuth natif
+ * - Web          : Popup OAuth2 classique via Google Identity Services
  */
 export async function signInWithGoogle(): Promise<GoogleAuthResult> {
   const platform = Capacitor.getPlatform()
@@ -22,70 +19,96 @@ export async function signInWithGoogle(): Promise<GoogleAuthResult> {
     let idToken: string | null = null
 
     if (platform === "android" || platform === "ios") {
-      // ─── Flow natif Capacitor ──────────────────────────────────────────
+      // ── Natif Capacitor ─────────────────────────────────────────────
       const { GoogleAuth } = await import("@codetrix-studio/capacitor-google-auth")
-      await GoogleAuth.initialize({
-        clientId: process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || "",
-        scopes: ["profile", "email"],
-        grantOfflineAccess: true,
-      })
-
+      // On Android/iOS, we initialize with the config from capacitor.config.ts/strings.xml
+      // so we don't need to pass clientId here (it will use the serverClientId from config)
+      await GoogleAuth.initialize()
       const googleUser = await GoogleAuth.signIn()
-
-      // Le idToken est dans authentication.idToken
+      console.log("Google user:", googleUser)
       idToken = googleUser?.authentication?.idToken ?? null
 
       if (!idToken) {
         return { success: false, error: "Impossible d'obtenir le token Google" }
       }
     } else {
-      // ─── Flow web : Google Identity Services via prompt ────────────────
-      // On utilise une Promise pour récupérer le credential depuis le callback
-      idToken = await new Promise<string | null>((resolve) => {
-        if (typeof window === "undefined" || !(window as any).google) {
-          resolve(null)
-          return
-        }
-
-        ;(window as any).google.accounts.id.initialize({
-          client_id: process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || "",
-          callback: (response: { credential: string }) => {
-            resolve(response.credential)
-          },
-        })
-
-        ;(window as any).google.accounts.id.prompt((notification: any) => {
-          if (
-            notification.isNotDisplayed() ||
-            notification.isSkippedMoment()
-          ) {
-            // L'utilisateur a fermé le prompt ou il n'a pas affiché
-            resolve(null)
-          }
-        })
-      })
+      // ── Web : popup OAuth2 avec google.accounts.oauth2 ──────────────
+      idToken = await googlePopupSignIn()
 
       if (!idToken) {
-        return {
-          success: false,
-          error: "Connexion Google annulée",
-        }
+        return { success: false, error: "Connexion Google annulée" }
       }
     }
 
-    // ─── Envoi au backend ───────────────────────────────────────────────
+    // ── Envoi au backend ────────────────────────────────────────────
     const response = await api.post<AuthResponse>("/auth/google", {
       id_token: idToken,
     })
-
     saveAuthData(response.data)
-
     return { success: true }
   } catch (error: any) {
+    console.error("Google auth error:", error)
     const message =
-      error?.message ||
-      error?.error ||
-      "Erreur lors de la connexion avec Google"
+      error?.message || error?.error || "Erreur lors de la connexion avec Google"
     return { success: false, error: message }
   }
+}
+
+/**
+ * Ouvre une fenêtre popup Google OAuth2 et récupère le id_token.
+ * Utilise le flow "token" (implicit) avec response_type=id_token.
+ */
+function googlePopupSignIn(): Promise<string | null> {
+  return new Promise((resolve) => {
+    const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || ""
+    const redirectUri = typeof window !== "undefined" ? `${window.location.origin}/auth/google/callback` : ""
+    const nonce = Math.random().toString(36).slice(2)
+
+    const params = new URLSearchParams({
+      client_id: clientId,
+      redirect_uri: redirectUri,
+      response_type: "id_token",
+      scope: "openid email profile",
+      nonce,
+      prompt: "select_account",
+    })
+
+    const url = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`
+
+    const width = 500
+    const height = 600
+    const left = window.screenX + (window.outerWidth - width) / 2
+    const top = window.screenY + (window.outerHeight - height) / 2
+
+    const popup = window.open(url, "google-signin", `width=${width},height=${height},left=${left},top=${top}`)
+
+    if (!popup) {
+      resolve(null)
+      return
+    }
+
+    // Écoute le message envoyé par la page callback
+    const handler = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return
+      if (event.data?.type === "GOOGLE_AUTH_SUCCESS") {
+        window.removeEventListener("message", handler)
+        resolve(event.data.idToken)
+      }
+      if (event.data?.type === "GOOGLE_AUTH_ERROR") {
+        window.removeEventListener("message", handler)
+        resolve(null)
+      }
+    }
+
+    window.addEventListener("message", handler)
+
+    // Timeout si l'utilisateur ferme le popup sans se connecter
+    const checkClosed = setInterval(() => {
+      if (popup.closed) {
+        clearInterval(checkClosed)
+        window.removeEventListener("message", handler)
+        resolve(null)
+      }
+    }, 500)
+  })
 }

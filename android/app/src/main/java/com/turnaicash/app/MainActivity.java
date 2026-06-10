@@ -10,6 +10,8 @@ import android.webkit.WebResourceRequest;
 import com.getcapacitor.BridgeActivity;
 
 public class MainActivity extends BridgeActivity {
+    // Flag to ensure we only set up the interface once
+    private boolean webViewInterfaceSetup = false;
     
     // JavaScript interface to handle APK downloads
     public class WebAppInterface {
@@ -74,6 +76,11 @@ public class MainActivity extends BridgeActivity {
     }
     
     private void setupWebViewInterface() {
+        // Only run once
+        if (webViewInterfaceSetup) {
+            return;
+        }
+        
         WebView webView = getBridge().getWebView();
         if (webView != null) {
             android.util.Log.d("MainActivity", "Setting up WebView interface, WebView is available");
@@ -91,8 +98,14 @@ public class MainActivity extends BridgeActivity {
             // Inject JavaScript that intercepts APK URL navigation
             String interceptScript = 
                 "(function() {" +
-                "  var originalLocationSetter = Object.getOwnPropertyDescriptor(window, 'location').set;" +
+                "  var originalLocationDescriptor = Object.getOwnPropertyDescriptor(window, 'location');" +
+                "  if (!originalLocationDescriptor || !originalLocationDescriptor.configurable) {" +
+                "    console.log('Location property is not configurable, skipping interceptor');" +
+                "    return;" +
+                "  }" +
                 "  Object.defineProperty(window, 'location', {" +
+                "    configurable: true," +
+                "    enumerable: true," +
                 "    set: function(url) {" +
                 "      if (url && url.endsWith('.apk')) {" +
                 "        console.log('APK URL detected:', url);" +
@@ -104,9 +117,9 @@ public class MainActivity extends BridgeActivity {
                 "        }" +
                 "        return;" +
                 "      }" +
-                "      originalLocationSetter.call(window, url);" +
+                "      originalLocationDescriptor.set.call(window, url);" +
                 "    }," +
-                "    get: function() { return window.location; }" +
+                "    get: function() { return originalLocationDescriptor.get.call(window); }" +
                 "  });" +
                 "  console.log('APK URL interceptor installed');" +
                 "})();";
@@ -202,6 +215,9 @@ public class MainActivity extends BridgeActivity {
                     openApkUrl(url);
                 }
             });
+            
+            // Mark as setup
+            webViewInterfaceSetup = true;
         } else {
             android.util.Log.w("MainActivity", "WebView is null, cannot setup interface");
         }

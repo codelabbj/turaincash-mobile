@@ -2,6 +2,7 @@
 <resources>
     <string name="app_name">TURAINCASH</string>
     <string name="title_activity_main">TURAINCASH</string>
-    <string name="package_name">com.turnaicash.app</string>
-    <string name="custom_url_scheme">com.turnaicash.app</string>
+    <string name="package_name">com.turaincash.android</string>
+    <string name="custom_url_scheme">com.turaincash.android</string>
+    <string name="server_client_id">665076337085-k6rg6df0pj78ho1m93c0q8nguh550tid.apps.googleusercontent.com</string>
 </resources>
