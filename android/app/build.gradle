@@ -42,14 +42,17 @@ android {
     compileSdkVersion 35
 
     defaultConfig {
-//        applicationId "com.turnaicash.android"
-        applicationId "com.turaincash.android"   // ✅ correct
-        minSdkVersion 23
-        targetSdkVersion 34
-        //targetSdkVersion 35  // <-- update this too for consistency
+        applicationId "com.turaincash.android"
+        minSdkVersion rootProject.ext.minSdkVersion
+        targetSdkVersion rootProject.ext.targetSdkVersion
 
         versionCode 5
         versionName "1.0.5"
+
+        // Exclude heavy files from web assets that shouldn't be bundled
+        aaptOptions {
+            ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~:!*.apk:!releases'
+        }
     }
 
     signingConfigs {
@@ -63,6 +66,12 @@ android {
     buildTypes {
         release {
             signingConfig signingConfigs.release
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+        debug {
+            minifyEnabled false
         }
     }
 
