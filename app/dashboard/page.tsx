@@ -228,7 +228,7 @@ function DashboardContent() {
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-3 flex-1">
               <img
-                src="/Turaincash-logo.png"
+                src={theme === "dark" ? "/Turaincash-logo2.png" : "/Turaincash-logo.png"}
                 alt="TurainCash Logo"
                 width={70}
                 height={70}

@@ -11,6 +11,7 @@ import Link from "next/link"
 import Image from "next/image"
 import { Capacitor } from "@capacitor/core"
 import { Eye, EyeOff, ArrowLeft } from "lucide-react"
+import { useTheme } from "next-themes"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -38,6 +39,7 @@ export default function LoginPage() {
   const [rememberMe, setRememberMe] = useState(false)
   const [isForgotPassword, setIsForgotPassword] = useState(false)
   const [forgotPasswordStep, setForgotPasswordStep] = useState(1)
+  const { resolvedTheme } = useTheme()
   
   // Forgot password form states
   const [forgotPasswordEmail, setForgotPasswordEmail] = useState("")
@@ -369,7 +371,7 @@ export default function LoginPage() {
         <CardHeader className="space-y-3 text-center">
           <div className="flex justify-center mb-2">
             <Image
-              src="/Turaincash-logo.png"
+              src={resolvedTheme === "dark" ? "/Turaincash-logo2.png" : "/Turaincash-logo.png"}
               alt="TurainCash Logo"
               width={120}
               height={120}

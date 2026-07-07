@@ -10,6 +10,7 @@ import toast from "react-hot-toast"
 import Link from "next/link"
 import Image from "next/image"
 import { Eye, EyeOff } from "lucide-react"
+import { useTheme } from "next-themes"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -36,6 +37,7 @@ export default function RegisterPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
+  const { resolvedTheme } = useTheme()
 
   const {
     register,
@@ -78,7 +80,7 @@ export default function RegisterPage() {
         <CardHeader className="space-y-1">
           <div className="flex justify-center mb-2">
             <Image
-              src="/Turaincash-logo.png"
+              src={resolvedTheme === "dark" ? "/Turaincash-logo2.png" : "/Turaincash-logo.png"}
               alt="TurainCash Logo"
               width={120}
               height={120}
