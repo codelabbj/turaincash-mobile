@@ -230,9 +230,9 @@ function DashboardContent() {
               <img
                 src={theme === "dark" ? "/Turaincash-logo2.png" : "/Turaincash-logo.png"}
                 alt="TurainCash Logo"
-                width={70}
-                height={70}
-                className="object-contain"
+                width={40}
+                height={40}
+                className="object-contain rounded-full overflow-hidden w-10 h-10"
               />
             </div>
             <div className="flex items-center gap-4">
