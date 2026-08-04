@@ -1,15 +1,27 @@
 package com.turnaicash.app;
 
+import android.Manifest;
+import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.webkit.DownloadListener;
+import android.webkit.PermissionRequest;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.webkit.JavascriptInterface;
 import android.net.Uri;
-import android.content.Intent;
 import android.webkit.WebResourceRequest;
+
+import androidx.annotation.NonNull;
+import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
+
 import com.getcapacitor.BridgeActivity;
+import com.getcapacitor.BridgeWebChromeClient;
 
 public class MainActivity extends BridgeActivity {
+    private static final int REQ_WEBVIEW_AUDIO = 9911;
+    private PermissionRequest pendingWebPermissionRequest;
+
     // Flag to ensure we only set up the interface once
     private boolean webViewInterfaceSetup = false;
     
@@ -20,18 +32,15 @@ public class MainActivity extends BridgeActivity {
             android.util.Log.d("MainActivity", "downloadApk called with URL: " + url);
             runOnUiThread(() -> {
                 try {
-                    // Use ACTION_VIEW with explicit MIME type for APK
                     Intent intent = new Intent(Intent.ACTION_VIEW);
                     intent.setDataAndType(Uri.parse(url), "application/vnd.android.package-archive");
                     intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
                     
-                    // Try to start the intent
                     try {
                         startActivity(intent);
                         android.util.Log.d("MainActivity", "Intent started successfully");
                     } catch (android.content.ActivityNotFoundException e) {
                         android.util.Log.e("MainActivity", "No app to handle APK, trying chooser");
-                        // If no app handles it directly, use chooser
                         Intent chooser = Intent.createChooser(intent, "Download APK");
                         chooser.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                         startActivity(chooser);
@@ -45,18 +54,12 @@ public class MainActivity extends BridgeActivity {
     
     private void openApkUrl(String url) {
         android.util.Log.d("MainActivity", "*** openApkUrl called with: " + url);
-        android.util.Log.d("MainActivity", "*** Thread: " + Thread.currentThread().getName());
-        
         try {
             Intent intent = new Intent(Intent.ACTION_VIEW);
             intent.setDataAndType(Uri.parse(url), "application/vnd.android.package-archive");
             intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
-            android.util.Log.d("MainActivity", "*** Intent created, attempting to start activity");
-            
             startActivity(intent);
-            android.util.Log.d("MainActivity", "*** SUCCESS: Intent started successfully!");
         } catch (android.content.ActivityNotFoundException e) {
-            android.util.Log.e("MainActivity", "*** ActivityNotFoundException: " + e.getMessage());
             try {
                 Intent intent = new Intent(Intent.ACTION_VIEW);
                 intent.setData(Uri.parse(url));
@@ -64,30 +67,23 @@ public class MainActivity extends BridgeActivity {
                 Intent chooser = Intent.createChooser(intent, "Télécharger APK");
                 chooser.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                 startActivity(chooser);
-                android.util.Log.d("MainActivity", "*** Chooser started as fallback");
             } catch (Exception e2) {
                 android.util.Log.e("MainActivity", "*** FAILED: Chooser also failed: " + e2.getMessage());
-                e2.printStackTrace();
             }
         } catch (Exception e) {
             android.util.Log.e("MainActivity", "*** ERROR: Exception in openApkUrl: " + e.getMessage());
-            e.printStackTrace();
         }
     }
     
     private void setupWebViewInterface() {
-        // Only run once
         if (webViewInterfaceSetup) {
             return;
         }
         
         WebView webView = getBridge().getWebView();
         if (webView != null) {
-            android.util.Log.d("MainActivity", "Setting up WebView interface, WebView is available");
-            // Add JavaScript interface
             webView.getSettings().setJavaScriptEnabled(true);
             webView.addJavascriptInterface(new WebAppInterface(), "AndroidDownloader");
-            android.util.Log.d("MainActivity", "JavaScript interface 'AndroidDownloader' added to WebView");
             
             // Immediately test if interface is accessible
             webView.evaluateJavascript(
@@ -129,43 +125,96 @@ public class MainActivity extends BridgeActivity {
             webView.setDownloadListener(new DownloadListener() {
                 @Override
                 public void onDownloadStart(String url, String userAgent, String contentDisposition, String mimetype, long contentLength) {
-                    android.util.Log.d("MainActivity", "onDownloadStart called with URL: " + url);
                     openApkUrl(url);
                 }
             });
             
-            // Mark as setup
             webViewInterfaceSetup = true;
-        } else {
-            android.util.Log.w("MainActivity", "WebView is null, cannot setup interface");
         }
+    }
+
+    private void attachWebViewMicHandler() {
+        try {
+            if (bridge == null) return;
+            WebView webView = bridge.getWebView();
+            if (webView == null) return;
+            webView.setWebChromeClient(new BridgeWebChromeClient(bridge) {
+                @Override
+                public void onPermissionRequest(final PermissionRequest request) {
+                    runOnUiThread(() -> handleWebPermissionRequest(request));
+                }
+            });
+        } catch (Exception e) {
+            android.util.Log.e("MainActivity", "attachWebViewMicHandler failed", e);
+        }
+    }
+
+    private void handleWebPermissionRequest(PermissionRequest request) {
+        boolean needsAudio = false;
+        for (String resource : request.getResources()) {
+            if (PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(resource)) {
+                needsAudio = true;
+                break;
+            }
+        }
+
+        if (!needsAudio) {
+            request.grant(request.getResources());
+            return;
+        }
+
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
+                == PackageManager.PERMISSION_GRANTED) {
+            request.grant(request.getResources());
+            return;
+        }
+
+        pendingWebPermissionRequest = request;
+        ActivityCompat.requestPermissions(
+                this,
+                new String[]{Manifest.permission.RECORD_AUDIO},
+                REQ_WEBVIEW_AUDIO
+        );
+    }
+
+    @Override
+    public void onRequestPermissionsResult(
+            int requestCode,
+            @NonNull String[] permissions,
+            @NonNull int[] grantResults
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode != REQ_WEBVIEW_AUDIO || pendingWebPermissionRequest == null) {
+            return;
+        }
+        if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+            pendingWebPermissionRequest.grant(pendingWebPermissionRequest.getResources());
+        } else {
+            pendingWebPermissionRequest.deny();
+        }
+        pendingWebPermissionRequest = null;
     }
     
     @Override
     protected void onCreate(android.os.Bundle savedInstanceState) {
+        registerPlugin(MicPermissionPlugin.class);
         super.onCreate(savedInstanceState);
+        attachWebViewMicHandler();
     }
     
     @Override
     public void onStart() {
         super.onStart();
-        
-        // Try setting up immediately, then also retry after delay
+        attachWebViewMicHandler();
         setupWebViewInterface();
-        
-        // Also retry after delays in case WebView wasn't ready
-        new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
-            setupWebViewInterface();
-        }, 500);
-        
-        new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
-            setupWebViewInterface();
-        }, 2000);
+        new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(this::setupWebViewInterface, 500);
+        new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(this::setupWebViewInterface, 2000);
     }
     
     @Override
     public void onResume() {
         super.onResume();
+        attachWebViewMicHandler();
         setupWebViewInterface();
     }
 }

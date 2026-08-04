@@ -1,14 +1,12 @@
 "use client"
 
 import { useEffect } from "react"
-import { useRouter } from "next/navigation"
 import { isAuthenticated } from "@/lib/auth"
 import { checkForUpdates } from '@/lib/updater';
 
 export default function HomePage() {
-  const router = useRouter()
-
   useEffect(() => {
+<<<<<<< HEAD
     checkForUpdates().catch((err) => console.error("Update check failed:", err));
     if (isAuthenticated()) {
       router.replace("/dashboard")
@@ -16,6 +14,13 @@ export default function HomePage() {
       router.replace("/login")
     }
   }, [router])
+=======
+    void checkForUpdates()
+    // Navigation hard : router.push casse souvent dans le WebView Capacitor (static export).
+    const target = isAuthenticated() ? "/dashboard/" : "/login/"
+    window.location.replace(target)
+  }, [])
+>>>>>>> e634c9f8adf1bd9d2be8759a29180bb80be1c2e2
 
   return (
     <div className="flex min-h-screen items-center justify-center">

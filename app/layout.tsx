@@ -6,6 +6,7 @@ import "./globals.css"
 import { Providers } from "@/components/providers"
 import { UpdateCheck } from "@/app/_components/UpdateCheck"
 import { MobileBackButtonHandler } from "@/components/mobile-back-button-handler"
+import NotificationChannelDialog from "@/components/NotificationChannelDialog"
 const _geist = Geist({ subsets: ["latin"] })
 const _geistMono = Geist_Mono({ subsets: ["latin"] })
 
@@ -45,6 +46,7 @@ export default function RootLayout({
           <MobileBackButtonHandler />
           <UpdateCheck />
           {children}
+          <NotificationChannelDialog />
           <footer className="px-4 py-6 text-center text-xs text-muted-foreground">
             Développé par{" "}
             <a
