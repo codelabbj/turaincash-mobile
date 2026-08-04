@@ -17,9 +17,9 @@ const config: CapacitorConfig = {
     },
   },
   server: {
-    // androidScheme: "https",
+    // Charge l'UI depuis Vercel (évite le blocage "Redirection..." du static export local)
     url: "https://turnaicash-mobile-app-1.vercel.app",
-    cleartext: false
+    cleartext: false,
   },
 }
 

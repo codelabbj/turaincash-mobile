@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useRef, useState } from "react"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
@@ -9,7 +9,7 @@ import { useTranslation } from "react-i18next"
 import toast from "react-hot-toast"
 import Link from "next/link"
 import Image from "next/image"
-import { Eye, EyeOff } from "lucide-react"
+import { Eye, EyeOff, Loader2 } from "lucide-react"
 import { useTheme } from "next-themes"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -19,63 +19,161 @@ import api from "@/lib/api"
 import { useSettings } from "@/hooks/use-settings"
 import { GoogleButton } from "@/components/google-button"
 
-const registerSchema = z.object({
-  first_name: z.string().min(1, "Le prénom est requis"),
-  last_name: z.string().min(1, "Le nom est requis"),
-  email: z.string().email("Email invalide"),
-  phone: z.string().min(10, "Numéro de téléphone invalide"),
-  password: z.string().min(6, "Le mot de passe doit contenir au moins 6 caractères"),
-  re_password: z.string().min(6, "Veuillez confirmer votre mot de passe"),
-  referrer_code: z.string().optional(),
-})
+const registerSchema = z
+  .object({
+    first_name: z.string().min(1, "Le prénom est requis"),
+    last_name: z.string().min(1, "Le nom est requis"),
+    email: z.string().email("Email invalide"),
+    phone: z.string().min(10, "Numéro de téléphone invalide"),
+    password: z.string().min(6, "Le mot de passe doit contenir au moins 6 caractères"),
+    re_password: z.string().min(6, "Veuillez confirmer votre mot de passe"),
+    referrer_code: z.string().optional(),
+  })
+  .refine((data) => data.password === data.re_password, {
+    message: "Les mots de passe ne correspondent pas",
+    path: ["re_password"],
+  })
 
+type RegisterFormData = z.infer<typeof registerSchema>
+
+function digitsOnly(phone: string) {
+  return String(phone || "").replace(/\D/g, "")
+}
 
 export default function RegisterPage() {
   const { t } = useTranslation()
   const router = useRouter()
-  const { referralBonusEnabled, isLoading: settingsLoading } = useSettings()
+  const { referralBonusEnabled, whatsappEnabled, isLoading: settingsLoading } = useSettings()
   const [isLoading, setIsLoading] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
+  const [showWhatsappDialog, setShowWhatsappDialog] = useState(false)
+  const pendingDataRef = useRef<RegisterFormData | null>(null)
   const { resolvedTheme } = useTheme()
 
   const {
     register,
     handleSubmit,
     formState: { errors },
-  } = useForm({
+  } = useForm<RegisterFormData>({
     resolver: zodResolver(registerSchema),
   })
 
-  const onSubmit = async (data: any) => {
+  const registerUser = async (data: RegisterFormData, whatsappVerified: boolean) => {
+    const fullPhone = digitsOnly(data.phone)
+    const payload: Record<string, string | boolean> = {
+      first_name: data.first_name,
+      last_name: data.last_name,
+      email: data.email,
+      phone: data.phone,
+      password: data.password,
+      re_password: data.re_password,
+    }
+
+    if (referralBonusEnabled && data.referrer_code) {
+      payload.referrer_code = data.referrer_code
+    }
+
+    if (whatsappEnabled && fullPhone) {
+      payload.user_whatsapp_phone = fullPhone
+      payload.whatsapp_verified = whatsappVerified
+    }
+
+    await api.post("/auth/registration", payload)
+    setShowWhatsappDialog(false)
+    pendingDataRef.current = null
+    toast.success("Inscription réussie! Veuillez vous connecter.")
+    router.push("/login")
+  }
+
+  const onSubmit = async (data: RegisterFormData, skipWhatsappCheck = false) => {
     setIsLoading(true)
     try {
-      const payload: any = {
-        first_name: data.first_name,
-        last_name: data.last_name,
-        email: data.email,
-        phone: data.phone,
-        password: data.password,
-        re_password: data.re_password,
+      const fullPhone = digitsOnly(data.phone)
+      let whatsappVerified = false
+
+      if (whatsappEnabled && !skipWhatsappCheck) {
+        pendingDataRef.current = data
+        try {
+          const checkResponse = await api.post("/auth/check-whatsapp-phone", {
+            user_whatsapp_phone: fullPhone,
+          })
+          if (checkResponse.data?.success) {
+            whatsappVerified = true
+          } else {
+            setShowWhatsappDialog(true)
+            return
+          }
+        } catch (error: any) {
+          const message = error?.response?.data?.message
+          if (message === "NUMBER_NOT_ON_WHATSAPP" || message === "INVALID_PHONE") {
+            setShowWhatsappDialog(true)
+            return
+          }
+          if (message !== "WHATSAPP_DISABLED") {
+            toast.error("Impossible de vérifier ce numéro WhatsApp. Réessayez.")
+            return
+          }
+        }
       }
 
-      // Only include referrer_code if referral_bonus is enabled
-      if (referralBonusEnabled && data.referrer_code) {
-        payload.referrer_code = data.referrer_code
-      }
-
-      await api.post("/auth/registration", payload)
-      toast.success("Inscription réussie! Veuillez vous connecter.")
-      router.push("/login")
+      await registerUser(data, whatsappVerified)
     } catch (error: any) {
-      toast.error(error.message || "Erreur d'inscription")
+      toast.error(error?.message || "Erreur d'inscription")
     } finally {
       setIsLoading(false)
     }
   }
 
+  const handleRegisterWithoutWhatsapp = () => {
+    const data = pendingDataRef.current
+    if (!data) {
+      setShowWhatsappDialog(false)
+      return
+    }
+    void onSubmit(data, true)
+  }
+
   return (
     <div className="flex min-h-screen items-center justify-center p-4 bg-muted/30">
+      {showWhatsappDialog && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 px-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl bg-background p-6 shadow-2xl border">
+            <h2 className="text-lg font-bold">Numéro WhatsApp introuvable</h2>
+            <p className="mt-3 text-sm text-muted-foreground">
+              Ce numéro n&apos;a pas été trouvé sur WhatsApp. Vous pourrez le configurer plus tard
+              dans votre profil (WhatsApp / Telegram).
+            </p>
+            <div className="mt-6 flex flex-col gap-3">
+              <Button
+                type="button"
+                onClick={handleRegisterWithoutWhatsapp}
+                disabled={isLoading}
+                className="w-full"
+              >
+                {isLoading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Inscription...
+                  </>
+                ) : (
+                  "Continuer"
+                )}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setShowWhatsappDialog(false)}
+                disabled={isLoading}
+                className="w-full"
+              >
+                Modifier le numéro
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <Card className="w-full max-w-md">
         <CardHeader className="space-y-1">
           <div className="flex justify-center mb-2">
@@ -92,7 +190,7 @@ export default function RegisterPage() {
           <CardDescription className="text-center">{t("register")}</CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+          <form onSubmit={handleSubmit((data) => onSubmit(data))} className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="first_name">{t("firstName")}</Label>
@@ -103,13 +201,23 @@ export default function RegisterPage() {
                   {...register("first_name")}
                   disabled={isLoading}
                 />
-                {errors.first_name && <p className="text-sm text-destructive">{errors.first_name.message}</p>}
+                {errors.first_name && (
+                  <p className="text-sm text-destructive">{errors.first_name.message}</p>
+                )}
               </div>
 
               <div className="space-y-2">
                 <Label htmlFor="last_name">{t("lastName")}</Label>
-                <Input id="last_name" type="text" placeholder="Doe" {...register("last_name")} disabled={isLoading} />
-                {errors.last_name && <p className="text-sm text-destructive">{errors.last_name.message}</p>}
+                <Input
+                  id="last_name"
+                  type="text"
+                  placeholder="Doe"
+                  {...register("last_name")}
+                  disabled={isLoading}
+                />
+                {errors.last_name && (
+                  <p className="text-sm text-destructive">{errors.last_name.message}</p>
+                )}
               </div>
             </div>
 
@@ -126,8 +234,19 @@ export default function RegisterPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="phone">{t("phone")}</Label>
-              <Input id="phone" type="tel" placeholder="2250700000000" {...register("phone")} disabled={isLoading} />
+              <Label htmlFor="phone">{whatsappEnabled ? "Numéro WhatsApp" : t("phone")}</Label>
+              <Input
+                id="phone"
+                type="tel"
+                placeholder="2250700000000"
+                {...register("phone")}
+                disabled={isLoading}
+              />
+              {whatsappEnabled && (
+                <p className="text-xs text-muted-foreground">
+                  Ce numéro sera enregistré pour les notifications WhatsApp.
+                </p>
+              )}
               {errors.phone && <p className="text-sm text-destructive">{errors.phone.message}</p>}
             </div>
 
@@ -186,7 +305,9 @@ export default function RegisterPage() {
                   )}
                 </Button>
               </div>
-              {errors.re_password && <p className="text-sm text-destructive">{errors.re_password.message}</p>}
+              {errors.re_password && (
+                <p className="text-sm text-destructive">{errors.re_password.message}</p>
+              )}
             </div>
 
             {referralBonusEnabled && (
@@ -199,7 +320,9 @@ export default function RegisterPage() {
                   {...register("referrer_code")}
                   disabled={isLoading || settingsLoading}
                 />
-                {errors.referrer_code && <p className="text-sm text-destructive">{errors.referrer_code?.message}</p>}
+                {errors.referrer_code && (
+                  <p className="text-sm text-destructive">{errors.referrer_code?.message}</p>
+                )}
               </div>
             )}
 
@@ -207,7 +330,6 @@ export default function RegisterPage() {
               {isLoading ? t("loading") : t("registerButton")}
             </Button>
 
-            {/* Bouton Google */}
             <GoogleButton mode="register" disabled={isLoading || settingsLoading} />
           </form>
         </CardContent>

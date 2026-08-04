@@ -1,15 +1,27 @@
 package com.turnaicash.app;
 
+import android.Manifest;
+import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.webkit.DownloadListener;
+import android.webkit.PermissionRequest;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.webkit.JavascriptInterface;
 import android.net.Uri;
-import android.content.Intent;
 import android.webkit.WebResourceRequest;
+
+import androidx.annotation.NonNull;
+import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
+
 import com.getcapacitor.BridgeActivity;
+import com.getcapacitor.BridgeWebChromeClient;
 
 public class MainActivity extends BridgeActivity {
+    private static final int REQ_WEBVIEW_AUDIO = 9911;
+    private PermissionRequest pendingWebPermissionRequest;
+
     // Flag to ensure we only set up the interface once
     private boolean webViewInterfaceSetup = false;
     
@@ -20,18 +32,15 @@ public class MainActivity extends BridgeActivity {
             android.util.Log.d("MainActivity", "downloadApk called with URL: " + url);
             runOnUiThread(() -> {
                 try {
-                    // Use ACTION_VIEW with explicit MIME type for APK
                     Intent intent = new Intent(Intent.ACTION_VIEW);
                     intent.setDataAndType(Uri.parse(url), "application/vnd.android.package-archive");
                     intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
                     
-                    // Try to start the intent
                     try {
                         startActivity(intent);
                         android.util.Log.d("MainActivity", "Intent started successfully");
                     } catch (android.content.ActivityNotFoundException e) {
                         android.util.Log.e("MainActivity", "No app to handle APK, trying chooser");
-                        // If no app handles it directly, use chooser
                         Intent chooser = Intent.createChooser(intent, "Download APK");
                         chooser.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                         startActivity(chooser);
@@ -45,18 +54,12 @@ public class MainActivity extends BridgeActivity {
     
     private void openApkUrl(String url) {
         android.util.Log.d("MainActivity", "*** openApkUrl called with: " + url);
-        android.util.Log.d("MainActivity", "*** Thread: " + Thread.currentThread().getName());
-        
         try {
             Intent intent = new Intent(Intent.ACTION_VIEW);
             intent.setDataAndType(Uri.parse(url), "application/vnd.android.package-archive");
             intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
-            android.util.Log.d("MainActivity", "*** Intent created, attempting to start activity");
-            
             startActivity(intent);
-            android.util.Log.d("MainActivity", "*** SUCCESS: Intent started successfully!");
         } catch (android.content.ActivityNotFoundException e) {
-            android.util.Log.e("MainActivity", "*** ActivityNotFoundException: " + e.getMessage());
             try {
                 Intent intent = new Intent(Intent.ACTION_VIEW);
                 intent.setData(Uri.parse(url));
@@ -64,104 +67,46 @@ public class MainActivity extends BridgeActivity {
                 Intent chooser = Intent.createChooser(intent, "Télécharger APK");
                 chooser.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                 startActivity(chooser);
-                android.util.Log.d("MainActivity", "*** Chooser started as fallback");
             } catch (Exception e2) {
                 android.util.Log.e("MainActivity", "*** FAILED: Chooser also failed: " + e2.getMessage());
-                e2.printStackTrace();
             }
         } catch (Exception e) {
             android.util.Log.e("MainActivity", "*** ERROR: Exception in openApkUrl: " + e.getMessage());
-            e.printStackTrace();
         }
     }
     
     private void setupWebViewInterface() {
-        // Only run once
         if (webViewInterfaceSetup) {
             return;
         }
         
         WebView webView = getBridge().getWebView();
         if (webView != null) {
-            android.util.Log.d("MainActivity", "Setting up WebView interface, WebView is available");
-            // Add JavaScript interface
             webView.getSettings().setJavaScriptEnabled(true);
             webView.addJavascriptInterface(new WebAppInterface(), "AndroidDownloader");
-            android.util.Log.d("MainActivity", "JavaScript interface 'AndroidDownloader' added to WebView");
             
-            // Immediately test if interface is accessible
-            webView.evaluateJavascript(
-                "if (typeof AndroidDownloader !== 'undefined') { console.log('SUCCESS: AndroidDownloader is available!'); } else { console.error('ERROR: AndroidDownloader not found'); }",
-                null
-            );
-            
-            // Inject JavaScript that intercepts APK URL navigation
-            String interceptScript = 
-                "(function() {" +
-                "  var originalLocationDescriptor = Object.getOwnPropertyDescriptor(window, 'location');" +
-                "  if (!originalLocationDescriptor || !originalLocationDescriptor.configurable) {" +
-                "    console.log('Location property is not configurable, skipping interceptor');" +
-                "    return;" +
-                "  }" +
-                "  Object.defineProperty(window, 'location', {" +
-                "    configurable: true," +
-                "    enumerable: true," +
-                "    set: function(url) {" +
-                "      if (url && url.endsWith('.apk')) {" +
-                "        console.log('APK URL detected:', url);" +
-                "        if (typeof AndroidDownloader !== 'undefined' && AndroidDownloader.downloadApk) {" +
-                "          AndroidDownloader.downloadApk(url);" +
-                "        } else {" +
-                "          console.error('AndroidDownloader not available');" +
-                "          window.postMessage({type: 'DOWNLOAD_APK', url: url}, '*');" +
-                "        }" +
-                "        return;" +
-                "      }" +
-                "      originalLocationDescriptor.set.call(window, url);" +
-                "    }," +
-                "    get: function() { return originalLocationDescriptor.get.call(window); }" +
-                "  });" +
-                "  console.log('APK URL interceptor installed');" +
-                "})();";
-            webView.evaluateJavascript(interceptScript, null);
-            
-            // Intercept APK URLs before navigation - MUST be set AFTER interface is added
             WebViewClient originalClient = webView.getWebViewClient();
-            android.util.Log.d("MainActivity", "Setting WebViewClient to intercept APK URLs. Original client: " + (originalClient != null ? originalClient.getClass().getName() : "null"));
             webView.setWebViewClient(new WebViewClient() {
                 @Override
                 public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                     String url = request.getUrl().toString();
-                    android.util.Log.d("MainActivity", "shouldOverrideUrlLoading called with URL: " + url);
-                    // Check if URL is an APK file - this is the FIRST and MOST IMPORTANT check
                     if (url != null && url.endsWith(".apk")) {
-                        android.util.Log.d("MainActivity", "APK detected in shouldOverrideUrlLoading, opening Intent immediately");
-                        // Stop any loading immediately
                         view.stopLoading();
-                        // Open APK URL directly - this should ALWAYS work
-                        MainActivity.this.runOnUiThread(() -> {
-                            openApkUrl(url);
-                        });
-                        return true; // Don't load in WebView
+                        MainActivity.this.runOnUiThread(() -> openApkUrl(url));
+                        return true;
                     }
-                    // Let Capacitor handle other URLs
                     if (originalClient != null) {
                         return originalClient.shouldOverrideUrlLoading(view, request);
                     }
-                    return false; // Let other URLs load normally
+                    return false;
                 }
                 
                 @Override
                 public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
-                    android.util.Log.d("MainActivity", "onPageStarted called with URL: " + url);
-                    // Check for APK in URL - be more aggressive
-                    if (url != null && (url.endsWith(".apk") || url.contains(".apk") || url.contains("application/vnd.android.package-archive"))) {
-                        android.util.Log.d("MainActivity", "*** APK DETECTED in onPageStarted! URL: " + url);
-                        android.util.Log.d("MainActivity", "*** Stopping WebView load and opening Intent");
+                    if (url != null && (url.endsWith(".apk") || url.contains(".apk"))) {
                         view.stopLoading();
-                        // Open immediately - we're already on UI thread in onPageStarted
                         openApkUrl(url);
-                        return; // Don't call original client since we handled it
+                        return;
                     }
                     if (originalClient != null) {
                         originalClient.onPageStarted(view, url, favicon);
@@ -170,9 +115,7 @@ public class MainActivity extends BridgeActivity {
                 
                 @Override
                 public void onLoadResource(WebView view, String url) {
-                    android.util.Log.d("MainActivity", "onLoadResource with URL: " + url);
                     if (url != null && url.endsWith(".apk")) {
-                        android.util.Log.d("MainActivity", "APK detected in onLoadResource");
                         view.stopLoading();
                         MainActivity.this.runOnUiThread(() -> openApkUrl(url));
                         return;
@@ -184,70 +127,113 @@ public class MainActivity extends BridgeActivity {
                 
                 @Override
                 public void onPageFinished(WebView view, String url) {
-                    android.util.Log.d("MainActivity", "onPageFinished with URL: " + url);
-                    // Re-inject interface after each page load
                     view.addJavascriptInterface(new WebAppInterface(), "AndroidDownloader");
-                    
-                    // Inject a global download function
-                    String downloadScript = 
+                    String downloadScript =
                         "window.downloadApk = function(url) {" +
                         "  if (typeof AndroidDownloader !== 'undefined' && AndroidDownloader.downloadApk) {" +
                         "    AndroidDownloader.downloadApk(url);" +
-                        "  } else {" +
-                        "    console.error('AndroidDownloader not available');" +
-                        "    window.location.href = url;" +
-                        "  }" +
-                        "};" +
-                        "console.log('downloadApk function injected');";
+                        "  } else { window.location.href = url; }" +
+                        "};";
                     view.evaluateJavascript(downloadScript, null);
-                    
                     if (originalClient != null) {
                         originalClient.onPageFinished(view, url);
                     }
                 }
             });
             
-            // Handle download events
             webView.setDownloadListener(new DownloadListener() {
                 @Override
                 public void onDownloadStart(String url, String userAgent, String contentDisposition, String mimetype, long contentLength) {
-                    android.util.Log.d("MainActivity", "onDownloadStart called with URL: " + url);
                     openApkUrl(url);
                 }
             });
             
-            // Mark as setup
             webViewInterfaceSetup = true;
-        } else {
-            android.util.Log.w("MainActivity", "WebView is null, cannot setup interface");
         }
+    }
+
+    private void attachWebViewMicHandler() {
+        try {
+            if (bridge == null) return;
+            WebView webView = bridge.getWebView();
+            if (webView == null) return;
+            webView.setWebChromeClient(new BridgeWebChromeClient(bridge) {
+                @Override
+                public void onPermissionRequest(final PermissionRequest request) {
+                    runOnUiThread(() -> handleWebPermissionRequest(request));
+                }
+            });
+        } catch (Exception e) {
+            android.util.Log.e("MainActivity", "attachWebViewMicHandler failed", e);
+        }
+    }
+
+    private void handleWebPermissionRequest(PermissionRequest request) {
+        boolean needsAudio = false;
+        for (String resource : request.getResources()) {
+            if (PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(resource)) {
+                needsAudio = true;
+                break;
+            }
+        }
+
+        if (!needsAudio) {
+            request.grant(request.getResources());
+            return;
+        }
+
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
+                == PackageManager.PERMISSION_GRANTED) {
+            request.grant(request.getResources());
+            return;
+        }
+
+        pendingWebPermissionRequest = request;
+        ActivityCompat.requestPermissions(
+                this,
+                new String[]{Manifest.permission.RECORD_AUDIO},
+                REQ_WEBVIEW_AUDIO
+        );
+    }
+
+    @Override
+    public void onRequestPermissionsResult(
+            int requestCode,
+            @NonNull String[] permissions,
+            @NonNull int[] grantResults
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode != REQ_WEBVIEW_AUDIO || pendingWebPermissionRequest == null) {
+            return;
+        }
+        if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+            pendingWebPermissionRequest.grant(pendingWebPermissionRequest.getResources());
+        } else {
+            pendingWebPermissionRequest.deny();
+        }
+        pendingWebPermissionRequest = null;
     }
     
     @Override
     protected void onCreate(android.os.Bundle savedInstanceState) {
+        registerPlugin(MicPermissionPlugin.class);
         super.onCreate(savedInstanceState);
+        attachWebViewMicHandler();
     }
     
     @Override
     public void onStart() {
         super.onStart();
-        
-        // Try setting up immediately, then also retry after delay
+        attachWebViewMicHandler();
         setupWebViewInterface();
-        
-        // Also retry after delays in case WebView wasn't ready
-        new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
-            setupWebViewInterface();
-        }, 500);
-        
-        new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
-            setupWebViewInterface();
-        }, 2000);
+        new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(this::setupWebViewInterface, 500);
+        new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(this::setupWebViewInterface, 2000);
     }
     
     @Override
     public void onResume() {
         super.onResume();
+        attachWebViewMicHandler();
         setupWebViewInterface();
     }
 }

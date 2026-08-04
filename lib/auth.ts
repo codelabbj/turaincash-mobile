@@ -18,6 +18,13 @@ export interface User {
   is_supperuser?: boolean
   date_joined?: string
   last_login?: string
+  whatsapp?: boolean | string | null
+  whatsapp_verified?: boolean
+  user_whatsapp_phone?: string | null
+  telegram_verified?: boolean
+  telegram_username?: string | null
+  sms_verified?: boolean
+  user_sms_phone?: string | null
 }
 
 export interface AuthResponse {

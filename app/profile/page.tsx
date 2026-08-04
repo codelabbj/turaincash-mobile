@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { AuthGuard } from "@/components/auth-guard"
 import api from "@/lib/api"
+import NotificationChannelsPanel from "@/components/NotificationChannelsPanel"
 
 interface UserProfile {
   id: string
@@ -192,6 +193,9 @@ function ProfileContent() {
       </header>
 
       <main className="container mx-auto px-4 py-6 max-w-2xl space-y-6">
+        {/* Notification Channels */}
+        <NotificationChannelsPanel mode="profile" showHeader />
+
         {/* Profile Information Card */}
         <Card>
           <CardHeader>

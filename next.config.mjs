@@ -4,6 +4,7 @@ const nextConfig = {
     ignoreBuildErrors: true,
   },
   output: 'export', // ✅ ensures static build for Capacitor
+  trailingSlash: true, // requis pour les routes locales Capacitor (/login/ → login/index.html)
   images: {
     unoptimized: true,
   },

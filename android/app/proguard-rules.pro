@@ -23,5 +23,6 @@
 -keep class com.google.firebase.** { *; }
 -keep class com.google.android.gms.** { *; }
 
-# Keep the app's main activity
+# Keep the app's main activity + plugins (namespace Java réel)
+-keep class com.turnaicash.app.** { *; }
 -keep class com.turaincash.android.** { *; }

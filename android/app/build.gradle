@@ -66,8 +66,10 @@ android {
     buildTypes {
         release {
             signingConfig signingConfigs.release
-            minifyEnabled true
-            shrinkResources true
+            // minify casse Capacitor / plugins si les -keep sont incomplets
+            // (le package Java est com.turnaicash.app, pas com.turaincash.android)
+            minifyEnabled false
+            shrinkResources false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
         debug {
