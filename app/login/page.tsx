@@ -373,13 +373,12 @@ export default function LoginPage() {
             <Image
               src={resolvedTheme === "dark" ? "/Turaincash-logo2.png" : "/Turaincash-logo.png"}
               alt="TurainCash Logo"
-              width={120}
-              height={120}
-              className="object-contain"
+              width={180}
+              height={180}
+              className="object-contain w-auto h-auto max-w-[180px] drop-shadow-sm"
               priority
             />
           </div>
-          <CardTitle className="mobile-heading text-2xl">TURAINCASH</CardTitle>
           <CardDescription className="mobile-text">
             {isForgotPassword ? "Réinitialisation du mot de passe" : t("login")}
           </CardDescription>

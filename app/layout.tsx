@@ -38,59 +38,7 @@ export default function RootLayout({
   return (
     <html lang="fr" suppressHydrationWarning>
       <body className={`font-sans antialiased touch-manipulation select-none`}>
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `
-              (function() {
-                let isHandlingBackButton = false;
-                
-                function handleBackButton() {
-                  if (isHandlingBackButton) return;
-                  isHandlingBackButton = true;
-                  
-                  // Dispatch custom event for React to handle
-                  window.dispatchEvent(new CustomEvent('mobileBackButton'));
-                  
-                  setTimeout(() => {
-                    isHandlingBackButton = false;
-                  }, 300);
-                }
-                
-                // Listen for various back button events
-                document.addEventListener('backbutton', function(e) {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  handleBackButton();
-                }, false);
-                
-                window.addEventListener('backbutton', function(e) {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  handleBackButton();
-                }, false);
-                
-                // Listen for browser back button - ALWAYS prevent default
-                window.addEventListener('popstate', function(e) {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  // Push current state back to prevent navigation
-                  if (window.history.state === null) {
-                    window.history.pushState({screen: 'app'}, '', window.location.href);
-                  } else {
-                    // Always push state to prevent back navigation
-                    window.history.pushState({screen: 'app'}, '', window.location.href);
-                  }
-                  handleBackButton();
-                });
-                
-                // Initialize history state
-                if (window.history.state === null) {
-                  window.history.replaceState({screen: 'app'}, '', window.location.href);
-                }
-              })();
-            `,
-          }}
-        />
+
         {/* Google Identity Services — nécessaire pour le Sign-In sur web/PWA */}
         <script src="https://accounts.google.com/gsi/client" async defer />
         <Providers>

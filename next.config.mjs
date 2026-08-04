@@ -4,6 +4,7 @@ const nextConfig = {
     ignoreBuildErrors: true,
   },
   output: 'export', // ✅ ensures static build for Capacitor
+  trailingSlash: true,
   images: {
     unoptimized: true,
   },

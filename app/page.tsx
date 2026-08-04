@@ -9,11 +9,11 @@ export default function HomePage() {
   const router = useRouter()
 
   useEffect(() => {
-    checkForUpdates();
+    checkForUpdates().catch((err) => console.error("Update check failed:", err));
     if (isAuthenticated()) {
-      router.push("/dashboard")
+      router.replace("/dashboard")
     } else {
-      router.push("/login")
+      router.replace("/login")
     }
   }, [router])
 

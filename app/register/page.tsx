@@ -82,13 +82,12 @@ export default function RegisterPage() {
             <Image
               src={resolvedTheme === "dark" ? "/Turaincash-logo2.png" : "/Turaincash-logo.png"}
               alt="TurainCash Logo"
-              width={120}
-              height={120}
-              className="object-contain"
+              width={180}
+              height={180}
+              className="object-contain w-auto h-auto max-w-[180px] drop-shadow-sm"
               priority
             />
           </div>
-          <CardTitle className="text-2xl font-bold text-center">TURAINCASH</CardTitle>
           <CardDescription className="text-center">{t("register")}</CardDescription>
         </CardHeader>
         <CardContent>

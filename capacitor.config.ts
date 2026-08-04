@@ -16,11 +16,11 @@ const config: CapacitorConfig = {
       forceCodeForRefreshToken: true,
     },
   },
-  server: {
-    // androidScheme: "https",
-    url: "https://turnaicash-mobile-app-1.vercel.app",
-    cleartext: false
-  },
+  // server: {
+  //   // androidScheme: "https",
+  //   url: "https://turnaicash-mobile-app-1.vercel.app",
+  //   cleartext: false
+  // },
 }
 
 export default config

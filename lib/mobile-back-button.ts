@@ -34,12 +34,10 @@ export class MobileBackButtonHandler {
       })
     }
 
-    // Fallback event listeners for web/browser
+    // Fallback event listeners for Cordova/Capacitor backbutton event
     const events = [
       { element: document, event: 'backbutton', handler: (e: Event) => { e.preventDefault(); e.stopPropagation(); handleBackButton(e) } },
       { element: window, event: 'backbutton', handler: (e: Event) => { e.preventDefault(); e.stopPropagation(); handleBackButton(e) } },
-      { element: window, event: 'popstate', handler: (e: Event) => { e.preventDefault(); e.stopPropagation(); handleBackButton(e) } },
-      { element: window, event: 'mobileBackButton', handler: (e: Event) => { e.preventDefault(); e.stopPropagation(); handleBackButton(e) } }
     ]
 
     events.forEach(({ element, event, handler }) => {
