@@ -50,6 +50,29 @@ function looksLikeImageUrl(text: string): boolean {
   return /\.(png|jpe?g|gif|webp|bmp|heic)$/.test(path) || path.includes('/media/');
 }
 
+
+const IMAGE_URL_IN_TEXT =
+  /https?:\/\/[^\s<>"']+\.(?:jpg|jpeg|png|webp|gif)(?:\?[^\s<>"']*)?|https?:\/\/[^\s<>"']*\/media\/[^\s<>"']+/gi;
+
+function extractImageUrlFromText(content: string): string | null {
+  const trimmed = (content || '').trim();
+  if (!trimmed) return null;
+  if (looksLikeImageUrl(trimmed) && !trimmed.includes('\n')) {
+    return trimmed;
+  }
+  const match = trimmed.match(IMAGE_URL_IN_TEXT);
+  return match?.[0]?.replace(/[),\].]+$/, '') || null;
+}
+
+function stripImageUrlFromText(content: string, imageUrl: string | null): string {
+  if (!imageUrl) return (content || '').trim();
+  return content
+    .replace(imageUrl, '')
+    .replace(/^\s*Exemple de capture attendue\s*:?\s*$/gim, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
 function isWithinChatWindow(iso?: string, nowMs = Date.now()): boolean {
   if (!iso) return true;
   const t = Date.parse(iso);
@@ -382,7 +405,12 @@ function VoiceMessagePlayer({
 function BubbleBody({ m }: { m: ChatBubble }) {
   const [lightbox, setLightbox] = useState<string | null>(null);
   const outgoing = m.role === 'user';
-  const imgSrc = m.imageUrl || (looksLikeImageUrl(m.content) ? m.content.trim() : '');
+  const embeddedUrl = extractImageUrlFromText(m.content);
+  const imgSrc =
+    m.imageUrl ||
+    embeddedUrl ||
+    (looksLikeImageUrl(m.content) ? m.content.trim() : '');
+  const caption = stripImageUrlFromText(m.content, imgSrc || embeddedUrl);
   const audioSrc =
     m.audioUrl ||
     (looksLikeAudioUrl(m.content) ? m.content.trim() : '') ||
@@ -407,10 +435,21 @@ function BubbleBody({ m }: { m: ChatBubble }) {
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={imgSrc}
-            alt="Capture envoyée"
+            alt="Exemple de capture"
             className="max-h-56 max-w-full rounded-xl object-contain bg-black/10"
           />
         </button>
+        {caption &&
+        !isImagePlaceholder(caption) &&
+        !looksLikeImageUrl(caption) ? (
+          <p
+            className={`mt-2 whitespace-pre-wrap text-sm ${
+              outgoing ? 'text-white' : 'text-gray-800'
+            }`}
+          >
+            {caption}
+          </p>
+        ) : null}
         {lightbox ? (
           <div
             className="fixed inset-0 z-[80] bg-black/80 flex items-center justify-center p-4"
@@ -440,7 +479,7 @@ function BubbleBody({ m }: { m: ChatBubble }) {
     );
   }
 
-  return <>{m.content}</>;
+  return <span className="whitespace-pre-wrap">{m.content}</span>;
 }
 
 type SupportChatbotProps = {
@@ -651,6 +690,9 @@ export function SupportChatbot({
           role: 'assistant',
           createdAt: new Date().toISOString(),
           content: reply || "Je n'ai pas pu répondre pour le moment. Réessayez.",
+          ...(extractImageUrlFromText(reply)
+            ? { imageUrl: extractImageUrlFromText(reply)! }
+            : {}),
         },
       ]);
     } catch (err: unknown) {
@@ -766,7 +808,9 @@ export function SupportChatbot({
             role: 'assistant',
             createdAt: new Date().toISOString(),
             content: reply || "Je n'ai pas pu répondre pour le moment. Réessayez.",
-            ...(looksLikeImageUrl(reply) ? { imageUrl: reply.trim() } : {}),
+            ...(extractImageUrlFromText(reply)
+              ? { imageUrl: extractImageUrlFromText(reply)! }
+              : {}),
             ...(looksLikeAudioUrl(reply) ? { audioUrl: reply.trim() } : {}),
           },
         ]);
