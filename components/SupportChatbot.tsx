@@ -402,15 +402,51 @@ function VoiceMessagePlayer({
   );
 }
 
-function BubbleBody({ m }: { m: ChatBubble }) {
+function MessageImage({ src }: { src: string }) {
   const [lightbox, setLightbox] = useState<string | null>(null);
+  return (
+    <>
+      <button
+        type="button"
+        className="block leading-none"
+        onClick={() => setLightbox(src)}
+        aria-label="Agrandir l'image"
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={src}
+          alt=""
+          className="block h-auto max-h-72 w-auto max-w-[220px] rounded-xl object-cover"
+        />
+      </button>
+      {lightbox ? (
+        <div
+          className="fixed inset-0 z-[80] bg-black/80 flex items-center justify-center p-4"
+          onClick={() => setLightbox(null)}
+          role="dialog"
+          aria-modal
+          aria-label="Aperçu image"
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={lightbox}
+            alt="Aperçu"
+            className="max-h-full max-w-full object-contain rounded-lg"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      ) : null}
+    </>
+  );
+}
+
+function BubbleBody({ m }: { m: ChatBubble }) {
   const outgoing = m.role === 'user';
   const embeddedUrl = extractImageUrlFromText(m.content);
   const imgSrc =
     m.imageUrl ||
     embeddedUrl ||
     (looksLikeImageUrl(m.content) ? m.content.trim() : '');
-  const caption = stripImageUrlFromText(m.content, imgSrc || embeddedUrl);
   const audioSrc =
     m.audioUrl ||
     (looksLikeAudioUrl(m.content) ? m.content.trim() : '') ||
@@ -423,54 +459,9 @@ function BubbleBody({ m }: { m: ChatBubble }) {
     return <VoiceUnavailable outgoing={outgoing} />;
   }
 
+  // Image (+ optional caption) is rendered as separate bubbles by the message row.
   if (isImageMsg && imgSrc) {
-    const showCaption =
-      Boolean(caption) &&
-      !isImagePlaceholder(caption) &&
-      !looksLikeImageUrl(caption);
-    return (
-      <>
-        {showCaption ? (
-          <p
-            className={`mb-2 whitespace-pre-wrap text-sm ${
-              outgoing ? 'text-white' : 'text-gray-800 dark:text-gray-100'
-            }`}
-          >
-            {caption}
-          </p>
-        ) : null}
-        <button
-          type="button"
-          className="inline-block max-w-[220px] overflow-hidden rounded-xl leading-none align-top"
-          onClick={() => setLightbox(imgSrc)}
-          aria-label="Agrandir l'image"
-        >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={imgSrc}
-            alt=""
-            className="block h-auto max-h-72 w-auto max-w-[220px] rounded-xl object-cover"
-          />
-        </button>
-        {lightbox ? (
-          <div
-            className="fixed inset-0 z-[80] bg-black/80 flex items-center justify-center p-4"
-            onClick={() => setLightbox(null)}
-            role="dialog"
-            aria-modal
-            aria-label="Aperçu image"
-          >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={lightbox}
-              alt="Aperçu"
-              className="max-h-full max-w-full object-contain rounded-lg"
-              onClick={(e) => e.stopPropagation()}
-            />
-          </div>
-        ) : null}
-      </>
-    );
+    return <MessageImage src={imgSrc} />;
   }
 
   if (isImagePlaceholder(m.content)) {
@@ -1048,45 +1039,78 @@ export function SupportChatbot({
             Boolean(caption) &&
             !isImagePlaceholder(caption) &&
             !looksLikeImageUrl(caption);
-          const isImageOnly =
-            Boolean(imgSrc) &&
-            !hasImageCaption &&
-            !m.audioUrl &&
-            !isVoicePlaceholder(m.content) &&
-            !looksLikeAudioUrl(m.content);
+          const audioSrc =
+            m.audioUrl ||
+            (looksLikeAudioUrl(m.content) ? m.content.trim() : '') ||
+            '';
+          const isAudioMsg = Boolean(audioSrc) || isVoicePlaceholder(m.content);
           const isMedia =
-            Boolean(m.audioUrl) ||
+            Boolean(audioSrc) ||
             Boolean(imgSrc) ||
             isVoicePlaceholder(m.content) ||
             isImagePlaceholder(m.content) ||
             looksLikeAudioUrl(m.content) ||
             looksLikeImageUrl(m.content) ||
             Boolean(embeddedUrl);
+          const bubbleTone =
+            m.role === 'user'
+              ? 'bg-[#00acc1] text-white rounded-tr-sm'
+              : 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-tl-sm';
+          const textForBubble = hasImageCaption
+            ? caption
+            : !imgSrc && !isAudioMsg
+              ? m.content
+              : '';
+          const showTextBubble =
+            Boolean(textForBubble) &&
+            !isImagePlaceholder(textForBubble) &&
+            !looksLikeImageUrl(textForBubble);
           return (
             <div
               key={m.id}
               className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}
             >
               <div
-                className={`w-fit max-w-[85%] flex flex-col ${
+                className={`w-fit max-w-[85%] flex flex-col gap-1.5 ${
                   m.role === 'user' ? 'items-end' : 'items-start'
                 }`}
               >
-                <div
-                  className={`rounded-2xl text-[15px] leading-relaxed whitespace-pre-wrap ${
-                    isImageOnly
-                      ? 'p-1 w-fit overflow-hidden'
-                      : isMedia
-                        ? 'px-3 py-2'
-                        : 'px-4 py-2.5'
-                  } ${
-                    m.role === 'user'
-                      ? 'bg-[#00acc1] text-white rounded-tr-sm'
-                      : 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-tl-sm'
-                  }`}
-                >
-                  <BubbleBody m={m} />
-                </div>
+                {isAudioMsg ? (
+                  <div
+                    className={`rounded-2xl text-[15px] leading-relaxed px-3 py-2 ${bubbleTone}`}
+                  >
+                    <BubbleBody m={m} />
+                  </div>
+                ) : (
+                  <>
+                    {showTextBubble ? (
+                      <div
+                        className={`rounded-2xl text-[15px] leading-relaxed whitespace-pre-wrap px-4 py-2.5 ${bubbleTone}`}
+                      >
+                        <span className="whitespace-pre-wrap">{textForBubble}</span>
+                      </div>
+                    ) : null}
+                    {imgSrc ? (
+                      <div
+                        className={`rounded-2xl p-1 w-fit overflow-hidden ${bubbleTone}`}
+                      >
+                        <MessageImage src={imgSrc} />
+                      </div>
+                    ) : isImagePlaceholder(m.content) ? (
+                      <div
+                        className={`rounded-2xl text-[15px] leading-relaxed px-4 py-2.5 ${bubbleTone}`}
+                      >
+                        <BubbleBody m={m} />
+                      </div>
+                    ) : !showTextBubble && !isMedia ? (
+                      <div
+                        className={`rounded-2xl text-[15px] leading-relaxed whitespace-pre-wrap px-4 py-2.5 ${bubbleTone}`}
+                      >
+                        <BubbleBody m={m} />
+                      </div>
+                    ) : null}
+                  </>
+                )}
                 {formatBubbleStamp(m.createdAt) ? (
                   <span className="mt-1 px-1 text-[11px] tabular-nums text-gray-400 dark:text-gray-500">
                     {formatBubbleStamp(m.createdAt)}
@@ -1095,7 +1119,7 @@ export function SupportChatbot({
               </div>
             </div>
           );
-        })}
+        })}}
         {sending && (
           <div className="flex justify-start">
             <div className="rounded-2xl px-4 py-3 bg-gray-100 dark:bg-gray-800">
