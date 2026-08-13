@@ -424,32 +424,34 @@ function BubbleBody({ m }: { m: ChatBubble }) {
   }
 
   if (isImageMsg && imgSrc) {
+    const showCaption =
+      Boolean(caption) &&
+      !isImagePlaceholder(caption) &&
+      !looksLikeImageUrl(caption);
     return (
       <>
+        {showCaption ? (
+          <p
+            className={`mb-2 whitespace-pre-wrap text-sm ${
+              outgoing ? 'text-white' : 'text-gray-800 dark:text-gray-100'
+            }`}
+          >
+            {caption}
+          </p>
+        ) : null}
         <button
           type="button"
-          className="block text-left -m-0.5"
+          className="inline-block max-w-[220px] overflow-hidden rounded-xl leading-none align-top"
           onClick={() => setLightbox(imgSrc)}
           aria-label="Agrandir l'image"
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={imgSrc}
-            alt="Exemple de capture"
-            className="max-h-56 max-w-full rounded-xl object-contain bg-black/10"
+            alt=""
+            className="block h-auto max-h-72 w-auto max-w-[220px] rounded-xl object-cover"
           />
         </button>
-        {caption &&
-        !isImagePlaceholder(caption) &&
-        !looksLikeImageUrl(caption) ? (
-          <p
-            className={`mt-2 whitespace-pre-wrap text-sm ${
-              outgoing ? 'text-white' : 'text-gray-800'
-            }`}
-          >
-            {caption}
-          </p>
-        ) : null}
         {lightbox ? (
           <div
             className="fixed inset-0 z-[80] bg-black/80 flex items-center justify-center p-4"
@@ -1036,26 +1038,47 @@ export function SupportChatbot({
 
       <div className="flex-1 min-h-0 overflow-y-auto px-4 py-4 space-y-3">
         {messages.map((m) => {
+          const embeddedUrl = extractImageUrlFromText(m.content);
+          const imgSrc =
+            m.imageUrl ||
+            embeddedUrl ||
+            (looksLikeImageUrl(m.content) ? m.content.trim() : '');
+          const caption = stripImageUrlFromText(m.content, imgSrc || embeddedUrl);
+          const hasImageCaption =
+            Boolean(caption) &&
+            !isImagePlaceholder(caption) &&
+            !looksLikeImageUrl(caption);
+          const isImageOnly =
+            Boolean(imgSrc) &&
+            !hasImageCaption &&
+            !m.audioUrl &&
+            !isVoicePlaceholder(m.content) &&
+            !looksLikeAudioUrl(m.content);
           const isMedia =
             Boolean(m.audioUrl) ||
-            Boolean(m.imageUrl) ||
+            Boolean(imgSrc) ||
             isVoicePlaceholder(m.content) ||
             isImagePlaceholder(m.content) ||
             looksLikeAudioUrl(m.content) ||
-            looksLikeImageUrl(m.content);
+            looksLikeImageUrl(m.content) ||
+            Boolean(embeddedUrl);
           return (
             <div
               key={m.id}
               className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}
             >
               <div
-                className={`max-w-[85%] flex flex-col ${
+                className={`w-fit max-w-[85%] flex flex-col ${
                   m.role === 'user' ? 'items-end' : 'items-start'
                 }`}
               >
                 <div
                   className={`rounded-2xl text-[15px] leading-relaxed whitespace-pre-wrap ${
-                    isMedia ? 'px-3 py-2' : 'px-4 py-2.5'
+                    isImageOnly
+                      ? 'p-1 w-fit overflow-hidden'
+                      : isMedia
+                        ? 'px-3 py-2'
+                        : 'px-4 py-2.5'
                   } ${
                     m.role === 'user'
                       ? 'bg-[#00acc1] text-white rounded-tr-sm'
