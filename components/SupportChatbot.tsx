@@ -1134,7 +1134,7 @@ export function SupportChatbot({
               </div>
             </div>
           );
-        })}}
+        })}
         {sending && (
           <div className="flex justify-start">
             <div className="rounded-2xl px-4 py-3 bg-gray-100 dark:bg-gray-800">
