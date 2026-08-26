@@ -23,3 +23,15 @@ export function formatCurrency(amount: number): string {
     minimumFractionDigits: 0,
   }).format(amount)
 }
+
+/** True si la plateforme est BetMomo (pas de search-user côté front). */
+export function isBetMomoPlatform(
+  platform?: { name?: string | null; public_name?: string | null } | null,
+): boolean {
+  if (!platform) return false
+  const normalize = (value?: string | null) =>
+    (value || "").toUpperCase().replace(/[^A-Z0-9]/g, "")
+  const name = normalize(platform.name)
+  const publicName = normalize(platform.public_name)
+  return name === "BETMOMO" || publicName === "BETMOMO"
+}

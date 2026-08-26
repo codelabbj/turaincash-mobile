@@ -17,6 +17,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { AuthGuard } from "@/components/auth-guard"
 import api from "@/lib/api"
 import type { Platform } from "@/lib/types"
+import { isBetMomoPlatform } from "@/lib/utils"
 
 interface SearchUserResponse {
   UserId: number
@@ -102,32 +103,32 @@ function AddBetIdContent() {
 
   // Add bet ID mutation
   const addBetIdMutation = useMutation({
-    mutationFn: async () => {
-      if (!pendingBetId) {
+    mutationFn: async (data?: { appId: string; platformId: string }) => {
+      const payload = data || pendingBetId
+      if (!payload) {
         throw new Error("Données manquantes")
       }
       const response = await api.post("/mobcash/user-app-id/", {
-        user_app_id: pendingBetId.appId,
-        app_name: pendingBetId.platformId,
+        user_app_id: payload.appId,
+        app_name: payload.platformId,
       })
-      return response.data
+      return { data: response.data, payload }
     },
-    onSuccess: () => {
-      const pendingData = pendingBetId
+    onSuccess: ({ payload }) => {
       toast.success("Identifiant de pari ajouté avec succès!")
       queryClient.invalidateQueries({ queryKey: ["bet-ids"] })
       setShowConfirmModal(false)
       setAppId("")
       setPendingBetId(null)
       setSearchResult(null)
-      if (pendingData && typeof window !== "undefined") {
+      if (payload && typeof window !== "undefined") {
         const storageKey = flow === "withdraw" ? "withdrawReturnData" : "depositReturnData"
         window.localStorage.setItem(
           storageKey,
           JSON.stringify({
             action: "addBet",
-            platformId: pendingData.platformId,
-            user_app_id: pendingData.appId,
+            platformId: payload.platformId,
+            user_app_id: payload.appId,
             targetStep,
           }),
         )
@@ -161,6 +162,15 @@ function AddBetIdContent() {
 
     if (!platformId) {
       toast.error("Veuillez sélectionner une plateforme")
+      return
+    }
+
+    const platform = platforms?.find((p) => p.id === platformId)
+    // BetMomo: pas d'API search-user — enregistrement direct
+    if (isBetMomoPlatform(platform)) {
+      const payload = { appId: appId.trim(), platformId }
+      setPendingBetId(payload)
+      addBetIdMutation.mutate(payload)
       return
     }
 
@@ -239,7 +249,7 @@ function AddBetIdContent() {
                 className="w-full" 
                 disabled={searchUserMutation.isPending || addBetIdMutation.isPending}
               >
-                {searchUserMutation.isPending ? (
+                {searchUserMutation.isPending || addBetIdMutation.isPending ? (
                   <>
                     <div className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-solid border-current border-r-transparent mr-2"></div>
                     {t("loading")}

@@ -19,6 +19,7 @@ import { useSettings } from "@/hooks/use-settings"
 import { TransactionSummaryDialog } from "@/components/transaction-summary-dialog"
 import { transactionApi } from "@/lib/api-client"
 import { Transaction } from "@/lib/types"
+import { isBetMomoPlatform } from "@/lib/utils"
 
 const COUNTRY_OPTIONS = [
   { code: "CI", name: "Côte d'Ivoire", indication: "225" },
@@ -367,13 +368,15 @@ function DepositContent() {
       if (!trimmedValue) throw new Error("Veuillez saisir un identifiant valide")
       const platformId = selectedPlatform?.id || bet.app
       if (!platformId) throw new Error("Plateforme introuvable")
-      const searchResponse = await api.post<SearchUserResponse>("/mobcash/search-user", {
-        app_id: platformId,
-        userid: trimmedValue,
-      })
-      const searchResult = searchResponse.data
-      if (searchResult.UserId === 0) throw new Error("Utilisateur non trouvé. Vérifiez l'identifiant.")
-      if (searchResult.CurrencyId !== 27) throw new Error("La devise de cet utilisateur n'est pas XOF (27).")
+      if (!isBetMomoPlatform(selectedPlatform)) {
+        const searchResponse = await api.post<SearchUserResponse>("/mobcash/search-user", {
+          app_id: platformId,
+          userid: trimmedValue,
+        })
+        const searchResult = searchResponse.data
+        if (searchResult.UserId === 0) throw new Error("Utilisateur non trouvé. Vérifiez l'identifiant.")
+        if (searchResult.CurrencyId !== 27) throw new Error("La devise de cet utilisateur n'est pas XOF (27).")
+      }
       await api.patch(`/mobcash/user-app-id/${bet.id}/`, {
         user_app_id: trimmedValue,
         app_name: platformId,

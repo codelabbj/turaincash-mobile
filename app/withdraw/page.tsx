@@ -15,6 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { AuthGuard } from "@/components/auth-guard"
 import api from "@/lib/api"
 import type { Platform, Network, UserPhone, UserAppId } from "@/lib/types"
+import { isBetMomoPlatform } from "@/lib/utils"
 
 const COUNTRY_OPTIONS = [
   { code: "CI", name: "Côte d'Ivoire", indication: "225" },
@@ -204,18 +205,20 @@ function WithdrawContent() {
         throw new Error("Plateforme introuvable")
       }
 
-      const searchResponse = await api.post<SearchUserResponse>("/mobcash/search-user", {
-        app_id: platformId,
-        userid: trimmedValue,
-      })
-      const searchResult = searchResponse.data
+      if (!isBetMomoPlatform(selectedPlatform)) {
+        const searchResponse = await api.post<SearchUserResponse>("/mobcash/search-user", {
+          app_id: platformId,
+          userid: trimmedValue,
+        })
+        const searchResult = searchResponse.data
 
-      if (searchResult.UserId === 0) {
-        throw new Error("Utilisateur non trouvé. Vérifiez l'identifiant.")
-      }
+        if (searchResult.UserId === 0) {
+          throw new Error("Utilisateur non trouvé. Vérifiez l'identifiant.")
+        }
 
-      if (searchResult.CurrencyId !== 27) {
-        throw new Error("La devise de cet utilisateur n'est pas XOF (27).")
+        if (searchResult.CurrencyId !== 27) {
+          throw new Error("La devise de cet utilisateur n'est pas XOF (27).")
+        }
       }
 
       await api.patch(`/mobcash/user-app-id/${bet.id}/`, {
