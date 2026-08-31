@@ -1,9 +1,11 @@
 'use client';
 
 import { FormEvent, useEffect, useRef, useState } from 'react';
-import { Camera, Mic, Pause, Play, Send, Trash2 } from 'lucide-react';
+import { Camera, Check, CheckCheck, FileText, Mic, Pause, Play, Send, Trash2 } from 'lucide-react';
 import {
   fetchChatbotHumanMessages,
+  fetchChatbotReadStatus,
+  markChatbotRead,
   sendChatbotAudio,
   sendChatbotMessage,
   uploadChatImage,
@@ -21,9 +23,19 @@ type ChatBubble = {
   imageUrl?: string;
   /** URL locale (blob:) ou distante pour rejouer un vocal. */
   audioUrl?: string;
+  /** Chat v2 — vidéo. */
+  videoUrl?: string;
+  /** Chat v2 — document (PDF…). */
+  documentUrl?: string;
+  /** Nom de fichier affiché pour un document. */
+  documentName?: string;
+  /** Chat v2 — quote WhatsApp-like. */
+  replyToPreview?: string;
+  /** Accusé : sent | delivered | read (messages user). */
+  deliveryStatus?: 'sent' | 'delivered' | 'read';
 };
 
-const STORAGE_KEY = 'turaincash_chatbot_session_v1';
+const STORAGE_KEY = 'fastxof_chatbot_session_v1';
 const SESSION_TTL_MS = 24 * 60 * 60 * 1000;
 
 type StoredSession = {
@@ -120,6 +132,31 @@ function formatBubbleStamp(iso?: string): string {
     year: 'numeric',
   });
   return `${date} ${time}`;
+}
+
+function applyAgentReadStatuses(
+  messages: ChatBubble[],
+  agentLastReadAt: string | null | undefined,
+): ChatBubble[] {
+  const agentMs = agentLastReadAt ? Date.parse(agentLastReadAt) : NaN;
+  return messages.map((m) => {
+    if (m.role !== 'user' || m.id === 'welcome') return m;
+    const createdMs = m.createdAt ? Date.parse(m.createdAt) : NaN;
+    const next: ChatBubble['deliveryStatus'] =
+      Number.isFinite(agentMs) && Number.isFinite(createdMs) && agentMs >= createdMs
+        ? 'read'
+        : 'sent';
+    if (m.deliveryStatus === next) return m;
+    return { ...m, deliveryStatus: next };
+  });
+}
+
+function DeliveryTicks({ status }: { status?: ChatBubble['deliveryStatus'] }) {
+  if (!status) return null;
+  if (status === 'read') {
+    return <CheckCheck className="inline-block h-3.5 w-3.5 text-sky-400" aria-label="Lu" />;
+  }
+  return <Check className="inline-block h-3.5 w-3.5 text-gray-400" aria-label="Envoyé" />;
 }
 
 function loadSession(): StoredSession | null {
@@ -455,6 +492,59 @@ function MessageImage({ src }: { src: string }) {
   );
 }
 
+function looksLikePdfUrl(text: string): boolean {
+  const t = (text || '').trim().toLowerCase();
+  if (!isHttpUrl(t)) return false;
+  return /\.pdf(?:\?|$)/i.test(t) || t.includes('/human_doc_') || t.includes('application/pdf');
+}
+
+function looksLikeDocumentName(text: string): boolean {
+  const t = (text || '').trim();
+  return /\.(pdf|docx?|txt)$/i.test(t);
+}
+
+function DocumentMessageCard({
+  url,
+  name,
+  outgoing,
+}: {
+  url: string;
+  name?: string;
+  outgoing?: boolean;
+}) {
+  const label = (name || '').trim() || 'Document PDF';
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={`flex items-center gap-3 min-w-[200px] max-w-[260px] rounded-xl px-3 py-2.5 transition ${
+        outgoing
+          ? 'bg-white/15 hover:bg-white/25 text-white'
+          : 'bg-white dark:bg-gray-900/60 hover:bg-gray-50 dark:hover:bg-gray-900 border border-gray-200/80 dark:border-gray-700'
+      }`}
+    >
+      <span
+        className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-lg ${
+          outgoing ? 'bg-white/20' : 'bg-red-500/10 text-red-600 dark:text-red-400'
+        }`}
+      >
+        <FileText className="h-6 w-6" />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-sm font-semibold leading-tight">{label}</span>
+        <span
+          className={`mt-0.5 block text-[11px] ${
+            outgoing ? 'text-white/75' : 'text-gray-500 dark:text-gray-400'
+          }`}
+        >
+          PDF · Ouvrir
+        </span>
+      </span>
+    </a>
+  );
+}
+
 function BubbleBody({ m }: { m: ChatBubble }) {
   const outgoing = m.role === 'user';
   const embeddedUrl = extractImageUrlFromText(m.content);
@@ -466,17 +556,69 @@ function BubbleBody({ m }: { m: ChatBubble }) {
     m.audioUrl ||
     (looksLikeAudioUrl(m.content) ? m.content.trim() : '') ||
     '';
+  const videoSrc = (m.videoUrl || '').trim();
+  const documentSrc =
+    (m.documentUrl || '').trim() ||
+    (looksLikePdfUrl(m.content) ? m.content.trim() : '');
   const isAudioMsg = Boolean(audioSrc) || isVoicePlaceholder(m.content);
   const isImageMsg = Boolean(imgSrc) || isImagePlaceholder(m.content);
+  const isDocumentMsg = Boolean(documentSrc);
+
+  const quote = m.replyToPreview ? (
+    <div
+      className={`mb-1.5 rounded-md border-l-2 px-2 py-1 text-xs opacity-90 ${
+        outgoing
+          ? 'border-white/50 bg-white/10 text-white/90'
+          : 'border-cyan-500/60 bg-black/5 text-gray-600 dark:text-gray-300'
+      }`}
+    >
+      {m.replyToPreview}
+    </div>
+  ) : null;
 
   if (isAudioMsg) {
-    if (audioSrc) return <VoiceMessagePlayer src={audioSrc} outgoing={outgoing} />;
-    return <VoiceUnavailable outgoing={outgoing} />;
+    return (
+      <div>
+        {quote}
+        {audioSrc ? <VoiceMessagePlayer src={audioSrc} outgoing={outgoing} /> : <VoiceUnavailable outgoing={outgoing} />}
+      </div>
+    );
+  }
+
+  if (videoSrc) {
+    return (
+      <div>
+        {quote}
+        <video
+          controls
+          src={videoSrc}
+          className="max-h-56 w-full max-w-xs rounded-lg bg-black"
+          preload="metadata"
+        />
+      </div>
+    );
+  }
+
+  if (isDocumentMsg && documentSrc) {
+    const docName =
+      m.documentName ||
+      (looksLikeDocumentName(m.content) ? m.content.trim() : undefined);
+    return (
+      <div>
+        {quote}
+        <DocumentMessageCard url={documentSrc} name={docName} outgoing={outgoing} />
+      </div>
+    );
   }
 
   // Image (+ optional caption) is rendered as separate bubbles by the message row.
   if (isImageMsg && imgSrc) {
-    return <MessageImage src={imgSrc} />;
+    return (
+      <div>
+        {quote}
+        <MessageImage src={imgSrc} />
+      </div>
+    );
   }
 
   if (isImagePlaceholder(m.content)) {
@@ -487,7 +629,12 @@ function BubbleBody({ m }: { m: ChatBubble }) {
     );
   }
 
-  return <span className="whitespace-pre-wrap">{m.content}</span>;
+  return (
+    <div>
+      {quote}
+      <span className="whitespace-pre-wrap">{m.content}</span>
+    </div>
+  );
 }
 
 type SupportChatbotProps = {
@@ -564,6 +711,35 @@ export function SupportChatbot({
     persistSession(conversationId, messages);
   }, [hydrated, conversationId, messages]);
 
+  // Accusés de lecture : le client marque lu + récupère si le conseiller a lu
+  useEffect(() => {
+    if (!hydrated || !conversationId) return;
+    let cancelled = false;
+
+    const syncRead = async () => {
+      try {
+        await markChatbotRead(conversationId);
+        const status = await fetchChatbotReadStatus(conversationId);
+        if (cancelled) return;
+        setMessages((prev) => applyAgentReadStatuses(prev, status.agent_last_read_at));
+      } catch {
+        // silencieux
+      }
+    };
+
+    void syncRead();
+    const intervalId = window.setInterval(() => void syncRead(), 8000);
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') void syncRead();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [hydrated, conversationId]);
+
   // Polling des réponses conseiller (prise en main humaine)
   useEffect(() => {
     if (!hydrated || !conversationId) return;
@@ -574,7 +750,9 @@ export function SupportChatbot({
       content: string;
       media_type?: string;
       media_url?: string;
+      file_name?: string;
       created_at?: string;
+      reply_to?: { content_preview?: string } | null;
     }): ChatBubble => {
       const content = it.content || '';
       const mediaUrl = (it.media_url || '').trim();
@@ -583,10 +761,24 @@ export function SupportChatbot({
         mediaType === 'audio' ||
         looksLikeAudioUrl(content) ||
         isVoicePlaceholder(content);
+      const isVideo = mediaType === 'video';
+      const isDocument =
+        mediaType === 'document' ||
+        looksLikePdfUrl(mediaUrl) ||
+        looksLikePdfUrl(content) ||
+        (Boolean(mediaUrl) && looksLikeDocumentName(content));
       const isImage =
-        mediaType === 'image' ||
-        looksLikeImageUrl(content) ||
-        isImagePlaceholder(content);
+        !isVideo &&
+        !isDocument &&
+        (mediaType === 'image' ||
+          looksLikeImageUrl(content) ||
+          isImagePlaceholder(content));
+      const documentName =
+        (it.file_name || '').trim() ||
+        (looksLikeDocumentName(content) ? content.trim() : undefined);
+      const documentUrl = isDocument
+        ? mediaUrl || (looksLikePdfUrl(content) ? content.trim() : '')
+        : '';
       return {
         id: `h-${it.id}`,
         role: 'assistant',
@@ -594,6 +786,11 @@ export function SupportChatbot({
         createdAt: it.created_at || new Date().toISOString(),
         ...(isImage ? { imageUrl: mediaUrl || (looksLikeImageUrl(content) ? content.trim() : undefined) } : {}),
         ...(isAudio ? { audioUrl: mediaUrl || (looksLikeAudioUrl(content) ? content.trim() : undefined) } : {}),
+        ...(isVideo && mediaUrl ? { videoUrl: mediaUrl } : {}),
+        ...(documentUrl ? { documentUrl, documentName } : {}),
+        ...(it.reply_to?.content_preview
+          ? { replyToPreview: it.reply_to.content_preview }
+          : {}),
       };
     };
 
@@ -614,11 +811,22 @@ export function SupportChatbot({
             }
             const nextAudio = bubble.audioUrl || existing.audioUrl;
             const nextImage = bubble.imageUrl || existing.imageUrl;
-            if (nextAudio !== existing.audioUrl || nextImage !== existing.imageUrl) {
+            const nextVideo = bubble.videoUrl || existing.videoUrl;
+            const nextDoc = bubble.documentUrl || existing.documentUrl;
+            const nextDocName = bubble.documentName || existing.documentName;
+            if (
+              nextAudio !== existing.audioUrl ||
+              nextImage !== existing.imageUrl ||
+              nextVideo !== existing.videoUrl ||
+              nextDoc !== existing.documentUrl
+            ) {
               byId.set(bubble.id, {
                 ...existing,
                 audioUrl: nextAudio,
                 imageUrl: nextImage,
+                videoUrl: nextVideo,
+                documentUrl: nextDoc,
+                documentName: nextDocName,
                 content: existing.content || bubble.content,
               });
               changed = true;
@@ -662,6 +870,7 @@ export function SupportChatbot({
       content: opts?.displayAs || trimmed,
       createdAt: new Date().toISOString(),
       imageUrl: opts?.imageUrl,
+      deliveryStatus: 'sent',
     };
     setMessages((prev) => [...prev, userMsg]);
     setSending(true);
@@ -780,6 +989,7 @@ export function SupportChatbot({
         content: 'Message vocal',
         createdAt: new Date().toISOString(),
         audioUrl,
+        deliveryStatus: 'sent',
       },
     ]);
     try {
@@ -892,12 +1102,11 @@ export function SupportChatbot({
       return;
     }
     try {
-      // Android APK : popup système RECORD_AUDIO avant getUserMedia.
       const { ensureMicrophonePermission } = await import('@/lib/mic-permission');
       const allowed = await ensureMicrophonePermission();
       if (!allowed) {
         setError(
-          'Micro refusé. Ouvrez Réglages → Applications → TurainCash → Autorisations → Microphone, puis réessayez.',
+          'Micro refusé. Ouvrez Réglages → Applications → Fastxof → Autorisations → Microphone, puis réessayez.',
         );
         return;
       }
@@ -974,21 +1183,12 @@ export function SupportChatbot({
       setRecordingSecs(0);
       setAmplitudes([]);
       setError('');
-    } catch (err) {
+    } catch {
       cleanupAudioGraph();
       recorderStreamRef.current?.getTracks().forEach((track) => track.stop());
       recorderStreamRef.current = null;
       setRecording(false);
-      const name = err instanceof DOMException ? err.name : '';
-      if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
-        setError(
-          'Micro refusé. Ouvrez Réglages → Applications → TurainCash → Autorisations → Microphone, puis réessayez.',
-        );
-      } else if (name === 'NotFoundError') {
-        setError('Aucun microphone trouvé sur cet appareil.');
-      } else {
-        setError("Impossible d'accéder au microphone. Vérifiez la permission micro de l'application.");
-      }
+      setError("Impossible d'accéder au microphone.");
     }
   };
 
@@ -1037,7 +1237,7 @@ export function SupportChatbot({
     >
       {!hideHeader && (
         <div className="shrink-0 px-4 py-3 border-b border-gray-100 dark:border-gray-800">
-          <p className="text-lg font-bold text-gray-900 dark:text-white">Assistant TURAINCASH</p>
+          <p className="text-lg font-bold text-gray-900 dark:text-white">Assistant Turaincash</p>
           <p className="text-sm text-gray-500">Réponses automatiques · support</p>
         </div>
       )}
@@ -1053,15 +1253,23 @@ export function SupportChatbot({
           const hasImageCaption =
             Boolean(caption) &&
             !isImagePlaceholder(caption) &&
-            !looksLikeImageUrl(caption);
+            !looksLikeImageUrl(caption) &&
+            !looksLikeDocumentName(caption);
           const audioSrc =
             m.audioUrl ||
             (looksLikeAudioUrl(m.content) ? m.content.trim() : '') ||
             '';
+          const videoSrc = (m.videoUrl || '').trim();
+          const documentSrc =
+            (m.documentUrl || '').trim() ||
+            (looksLikePdfUrl(m.content) ? m.content.trim() : '');
           const isAudioMsg = Boolean(audioSrc) || isVoicePlaceholder(m.content);
+          const isDocumentMsg = Boolean(documentSrc);
           const isMedia =
             Boolean(audioSrc) ||
+            Boolean(videoSrc) ||
             Boolean(imgSrc) ||
+            isDocumentMsg ||
             isVoicePlaceholder(m.content) ||
             isImagePlaceholder(m.content) ||
             looksLikeAudioUrl(m.content) ||
@@ -1073,13 +1281,14 @@ export function SupportChatbot({
               : 'bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-tl-sm';
           const textForBubble = hasImageCaption
             ? caption
-            : !imgSrc && !isAudioMsg
+            : !imgSrc && !isAudioMsg && !videoSrc && !isDocumentMsg
               ? m.content
               : '';
           const showTextBubble =
             Boolean(textForBubble) &&
             !isImagePlaceholder(textForBubble) &&
-            !looksLikeImageUrl(textForBubble);
+            !looksLikeImageUrl(textForBubble) &&
+            !looksLikeDocumentName(textForBubble);
           return (
             <div
               key={m.id}
@@ -1090,7 +1299,7 @@ export function SupportChatbot({
                   m.role === 'user' ? 'items-end' : 'items-start'
                 }`}
               >
-                {isAudioMsg ? (
+                {isAudioMsg || videoSrc || isDocumentMsg ? (
                   <div
                     className={`rounded-2xl text-[15px] leading-relaxed px-3 py-2 ${bubbleTone}`}
                   >
@@ -1127,8 +1336,9 @@ export function SupportChatbot({
                   </>
                 )}
                 {formatBubbleStamp(m.createdAt) ? (
-                  <span className="mt-1 px-1 text-[11px] tabular-nums text-gray-400 dark:text-gray-500">
+                  <span className="mt-1 px-1 text-[11px] tabular-nums text-gray-400 dark:text-gray-500 inline-flex items-center gap-1">
                     {formatBubbleStamp(m.createdAt)}
+                    {m.role === 'user' ? <DeliveryTicks status={m.deliveryStatus || 'sent'} /> : null}
                   </span>
                 ) : null}
               </div>
@@ -1220,6 +1430,12 @@ export function SupportChatbot({
                 const el = e.currentTarget;
                 el.style.height = 'auto';
                 el.style.height = `${Math.min(el.scrollHeight, 120)}px`;
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  onSubmit(e as unknown as FormEvent);
+                }
               }}
             />
             <button

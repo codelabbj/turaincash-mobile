@@ -2,6 +2,7 @@ import api from './api';
 
 export const CHATBOT_MESSAGE_V2 = '/mobcash/v2/chatbot/message/';
 export const CHATBOT_HUMAN_MESSAGES_V2 = '/mobcash/v2/chatbot/human-messages/';
+export const CHATBOT_MARK_READ_V2 = '/mobcash/v2/chatbot/mark-read/';
 export const UPLOAD_FILE = '/mobcash/upload/file';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://api.turaincash.com';
@@ -61,6 +62,7 @@ export type ChatbotHumanMessage = {
   content: string;
   media_type?: string;
   media_url?: string;
+  file_name?: string;
   created_at: string;
 };
 
@@ -78,6 +80,38 @@ export async function fetchChatbotHumanMessages(
 }
 
 /** Upload image → URL publique consommée par le chatbot. */
+
+/** Accusé de lecture client → ticks « lu » côté app agent. */
+export async function markChatbotRead(conversationId: string): Promise<{
+  agent_last_read_at?: string | null;
+  customer_last_read_at?: string | null;
+}> {
+  const cid = (conversationId || '').trim();
+  if (!cid) return {};
+  const res = await api.post(CHATBOT_MARK_READ_V2, { conversation_id: cid }, { timeout: 15_000 });
+  return (res.data || {}) as {
+    agent_last_read_at?: string | null;
+    customer_last_read_at?: string | null;
+  };
+}
+
+/** Statut lecture (ticks « lu » sur les messages envoyés par le client). */
+export async function fetchChatbotReadStatus(conversationId: string): Promise<{
+  agent_last_read_at?: string | null;
+  customer_last_read_at?: string | null;
+}> {
+  const cid = (conversationId || '').trim();
+  if (!cid) return {};
+  const res = await api.get(CHATBOT_MARK_READ_V2, {
+    params: { conversation_id: cid },
+    timeout: 15_000,
+  });
+  return (res.data || {}) as {
+    agent_last_read_at?: string | null;
+    customer_last_read_at?: string | null;
+  };
+}
+
 export async function uploadChatImage(file: File): Promise<string> {
   const form = new FormData();
   form.append('image', file);
