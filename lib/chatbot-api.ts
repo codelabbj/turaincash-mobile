@@ -114,10 +114,11 @@ export async function fetchChatbotReadStatus(conversationId: string): Promise<{
 
 export async function uploadChatImage(file: File): Promise<string> {
   const form = new FormData();
-  form.append('image', file);
+  // Backend UploadFileSerializer attend le champ « file » (pas « image »).
+  form.append('file', file);
   const res = await api.post(UPLOAD_FILE, form, {
     timeout: 60_000,
-    headers: { 'Content-Type': 'multipart/form-data' },
+    // Laisser axios/browser poser multipart + boundary (ne pas forcer Content-Type).
   });
   const data = res.data as { image?: string | null; file?: string | null };
   const url = (data.image || data.file || '').trim();
