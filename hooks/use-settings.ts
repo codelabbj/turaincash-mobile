@@ -19,6 +19,8 @@ export interface Settings {
   whatsapp_phone_indi?: string | null
   telegram?: string | null
   dowload_apk_link?: string | null
+  min_version?: number | string | null
+  last_version?: number | string | null
   [key: string]: any
 }
 

@@ -4,6 +4,7 @@ import { Geist, Geist_Mono } from "next/font/google"
 import { Analytics } from "@vercel/analytics/next"
 import "./globals.css"
 import { Providers } from "@/components/providers"
+import { AppVersionGate } from "@/components/AppVersionGate"
 import { UpdateCheck } from "@/app/_components/UpdateCheck"
 import { MobileBackButtonHandler } from "@/components/mobile-back-button-handler"
 import NotificationChannelDialog from "@/components/NotificationChannelDialog"
@@ -44,20 +45,22 @@ export default function RootLayout({
         <script src="https://accounts.google.com/gsi/client" async defer />
         <Providers>
           <MobileBackButtonHandler />
-          <UpdateCheck />
-          {children}
-          <NotificationChannelDialog />
-          <footer className="px-4 py-6 text-center text-xs text-muted-foreground">
-            Développé par{" "}
-            <a
-              href="https://codelab.bj/"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="font-medium text-primary underline-offset-4 hover:underline"
-            >
-              Code Lab
-            </a>
-          </footer>
+          <AppVersionGate>
+            <UpdateCheck />
+            {children}
+            <NotificationChannelDialog />
+            <footer className="px-4 py-6 text-center text-xs text-muted-foreground">
+              Développé par{" "}
+              <a
+                href="https://codelab.bj/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-medium text-primary underline-offset-4 hover:underline"
+              >
+                Code Lab
+              </a>
+            </footer>
+          </AppVersionGate>
         </Providers>
         <Analytics />
       </body>

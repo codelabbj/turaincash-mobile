@@ -1,365 +1,215 @@
-"use client";
-import { useEffect, useState } from "react";
-import { createPortal } from "react-dom";
-import { X } from "lucide-react";
+"use client"
 
-// Get current installed version - you may need to adjust this based on your app's versioning system
-function getCurrentVersion(): string {
-  const FALLBACK_VERSION = "1.0.0"
+import { useEffect, useState } from "react"
+import { createPortal } from "react-dom"
+import { X, Download } from "lucide-react"
+import { SETTINGS_V2 } from "@/hooks/use-settings"
+import api from "@/lib/api"
+import { compareVersions } from "@/lib/version-check"
 
-  if (typeof window !== "undefined") {
-    const envVersion =
-      process.env.NEXT_PUBLIC_APP_VERSION || (window as any)?.__APP_VERSION__
-
-    if (envVersion) {
-      localStorage.setItem("app_installed_version", envVersion)
-      return envVersion
-    }
-
-    const storedVersion = localStorage.getItem("app_installed_version")
-    if (storedVersion) {
-      return storedVersion
-    }
-  } else if (process.env.NEXT_PUBLIC_APP_VERSION) {
-    return process.env.NEXT_PUBLIC_APP_VERSION
-  }
-
-  return FALLBACK_VERSION
-}
-
-// Compare version strings (e.g., "1.0.1" vs "1.0.0")
-function isNewerVersion(manifestVersion: string, currentVersion: string): boolean {
-  const manifestParts = manifestVersion.split('.').map(Number);
-  const currentParts = currentVersion.split('.').map(Number);
-  
-  for (let i = 0; i < Math.max(manifestParts.length, currentParts.length); i++) {
-    const manifestPart = manifestParts[i] || 0;
-    const currentPart = currentParts[i] || 0;
-    
-    if (manifestPart > currentPart) return true;
-    if (manifestPart < currentPart) return false;
-  }
-  
-  return false; // Versions are equal
-}
-
-// Method 1: Create and click an anchor tag with download attribute
-function downloadViaAnchor(apkUrl: string): boolean {
-  try {
-    const link = document.createElement('a');
-    link.href = apkUrl;
-    link.download = 'app-update.apk';
-    link.target = '_blank';
-    link.style.display = 'none';
-    document.body.appendChild(link);
-    link.click();
-    setTimeout(() => {
-      document.body.removeChild(link);
-    }, 100);
-    console.log('Method 1: Anchor tag download triggered');
-    return true;
-  } catch (error) {
-    console.error('Anchor download failed:', error);
-    return false;
-  }
-}
-
-// Method 2: Try JavaScript interface if available
-function downloadViaJavaScriptInterface(apkUrl: string): boolean {
-  // Try injected downloadApk function
-  if (typeof (window as any).downloadApk === 'function') {
-    try {
-      console.log('Method 2a: Using injected downloadApk function');
-      (window as any).downloadApk(apkUrl);
-      return true;
-    } catch (error) {
-      console.error('downloadApk error:', error);
-    }
-  }
-  
-  // Try AndroidDownloader interface
-  if ((window as any).AndroidDownloader && typeof (window as any).AndroidDownloader.downloadApk === 'function') {
-    try {
-      console.log('Method 2b: Using AndroidDownloader interface');
-      (window as any).AndroidDownloader.downloadApk(apkUrl);
-      return true;
-    } catch (error) {
-      console.error('AndroidDownloader error:', error);
-    }
-  }
-  
-  return false;
-}
-
-// Method 3: Try Capacitor Browser plugin
 async function downloadViaCapacitorBrowser(apkUrl: string): Promise<boolean> {
   try {
-    // Try to dynamically import Capacitor Browser
-    const { Browser } = await import('@capacitor/browser');
-    console.log('Method 3: Using Capacitor Browser plugin');
-    await Browser.open({ url: apkUrl });
-    return true;
-  } catch (error) {
-    console.log('Capacitor Browser not available:', error);
-    return false;
+    const { Browser } = await import("@capacitor/browser")
+    await Browser.open({ url: apkUrl })
+    return true
+  } catch {
+    return false
   }
 }
 
-// Method 4: Fetch and create blob URL
-async function downloadViaBlob(apkUrl: string): Promise<boolean> {
-  try {
-    console.log('Method 4: Attempting blob download via fetch');
-    const response = await fetch(apkUrl);
-    if (!response.ok) {
-      throw new Error('Fetch failed');
-    }
-    const blob = await response.blob();
-    const blobUrl = window.URL.createObjectURL(blob);
-    
-    const link = document.createElement('a');
-    link.href = blobUrl;
-    link.download = 'app-update.apk';
-    link.style.display = 'none';
-    document.body.appendChild(link);
-    link.click();
-    
-    setTimeout(() => {
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(blobUrl);
-    }, 100);
-    
-    console.log('Method 4: Blob download successful');
-    return true;
-  } catch (error) {
-    console.error('Blob download failed:', error);
-    return false;
-  }
-}
-
-// Method 5: Try window.open
 function downloadViaWindowOpen(apkUrl: string): boolean {
   try {
-    console.log('Method 5: Trying window.open');
-    const newWindow = window.open(apkUrl, '_blank');
-    if (newWindow) {
-      console.log('Method 5: window.open succeeded');
-      return true;
-    } else {
-      console.log('Method 5: window.open was blocked');
-      return false;
-    }
-  } catch (error) {
-    console.error('window.open failed:', error);
-    return false;
+    const w = window.open(apkUrl, "_blank")
+    return Boolean(w)
+  } catch {
+    return false
   }
 }
 
-// Method 6: Navigate directly (should trigger WebView handlers)
-function downloadViaLocation(apkUrl: string): boolean {
-  try {
-    console.log('Method 6: Using window.location.href (should trigger WebView handlers)');
-    window.location.href = apkUrl;
-    return true;
-  } catch (error) {
-    console.error('location.href failed:', error);
-    return false;
-  }
-}
-
-// Method 7: Try Capacitor Share plugin
-async function downloadViaCapacitorShare(apkUrl: string): Promise<boolean> {
-  try {
-    const { Share } = await import('@capacitor/share');
-    console.log('Method 7: Using Capacitor Share plugin');
-    await Share.share({
-      title: 'Télécharger la mise à jour',
-      text: 'Télécharger la nouvelle version de l\'application',
-      url: apkUrl,
-      dialogTitle: 'Télécharger APK'
-    });
-    return true;
-  } catch (error) {
-    console.log('Capacitor Share not available:', error);
-    return false;
-  }
-}
-
-// Main download function that tries all methods
 async function downloadAndInstall(apkUrl: string) {
-  console.log('=== Starting download with multiple fallback methods ===');
-  console.log('Download URL:', apkUrl);
-  
-  // Try methods in order of preference
-  const methods = [
-    () => downloadViaJavaScriptInterface(apkUrl), // Native bridge (fastest)
-    () => downloadViaAnchor(apkUrl), // Direct anchor download
-    () => downloadViaCapacitorBrowser(apkUrl), // Capacitor Browser
-    () => downloadViaWindowOpen(apkUrl), // Window open
-    () => downloadViaBlob(apkUrl), // Fetch and blob
-    () => downloadViaLocation(apkUrl), // Location href (triggers WebView)
-    () => downloadViaCapacitorShare(apkUrl), // Share as last resort
-  ];
-  
-  // Try synchronous methods first
-  for (let i = 0; i < 4; i++) {
-    if (methods[i]()) {
-      console.log(`Successfully triggered download using method ${i + 1}`);
-      return;
-    }
-  }
-  
-  // Try async methods
-  for (let i = 4; i < methods.length; i++) {
-    try {
-      const result = await methods[i]();
-      if (result) {
-        console.log(`Successfully triggered download using method ${i + 1}`);
-        return;
-      }
-    } catch (error) {
-      console.error(`Method ${i + 1} failed:`, error);
-      continue;
-    }
-  }
-  
-  // If all methods fail, try location.href as absolute fallback
-  console.error('All download methods failed, using location.href as final fallback');
-  window.location.href = apkUrl;
+  if (await downloadViaCapacitorBrowser(apkUrl)) return
+  if (downloadViaWindowOpen(apkUrl)) return
+  window.location.href = apkUrl
 }
-// Dynamically import Capacitor Browser to avoid build issues
-// let Browser: any = null;
-// if (typeof window !== 'undefined') {
-//   try {
-//     Browser = require('@capacitor/browser').Browser;
-//   } catch (e) {
-//     // Capacitor Browser not available, will use window.open fallback
-//   }
-// }
 
+async function getInstalledVersion(): Promise<string> {
+  try {
+    const { Capacitor } = await import("@capacitor/core")
+    if (Capacitor.isNativePlatform()) {
+      const { App } = await import("@capacitor/app")
+      const info = await App.getInfo()
+      return String(info.build || info.version || "0")
+    }
+  } catch {
+    // ignore
+  }
+  return (
+    localStorage.getItem("installed_app_version") ||
+    process.env.NEXT_PUBLIC_APP_VERSION ||
+    "0"
+  )
+}
+
+/**
+ * Modal d'update pour les builds qui n'ont pas encore AppVersionGate,
+ * et fallback si settings/manifest indique une nouvelle APK.
+ */
 export function UpdateCheck() {
-  const [show, setShow] = useState(false);
-  const [apkUrl, setApkUrl] = useState("");
-  const [manifestVersion, setManifestVersion] = useState("");
-  const [mounted, setMounted] = useState(false);
+  const [show, setShow] = useState(false)
+  const [apkUrl, setApkUrl] = useState("")
+  const [latestVersion, setLatestVersion] = useState("")
+  const [installedVersion, setInstalledVersion] = useState("")
+  const [mounted, setMounted] = useState(false)
+  const [force, setForce] = useState(false)
 
   useEffect(() => {
-    setMounted(true);
-    const currentVersion = getCurrentVersion();
+    setMounted(true)
+    let cancelled = false
 
-    fetch("https://turnaicash-mobile-app-1.vercel.app/releases/manifest.json")
-      .then(r => r.json())
-      .then(manifest => {
-        const manifestVersion = manifest.android_version;
-        console.log('Manifest version:', manifestVersion, 'Current version:', currentVersion);
-        
-        // Check if we've already dismissed this version
-        const dismissedVersion = localStorage.getItem('app_dismissed_version');
-        const installedVersion = localStorage.getItem('app_installed_version');
-        const wasDismissed = dismissedVersion === manifestVersion;
-        const isAlreadyInstalled = installedVersion === manifestVersion;
-        
-        console.log('Dismissed version:', dismissedVersion, 'Installed version:', installedVersion);
-        console.log('Was dismissed:', wasDismissed, 'Is installed:', isAlreadyInstalled);
-        
-        // Show update if:
-        // 1. Force update is enabled AND we haven't installed this version yet, OR
-        // 2. There's a newer version available AND we haven't dismissed it AND we haven't installed it
-        const hasNewerVersion = isNewerVersion(manifestVersion, currentVersion);
-        const versionsAreEqual = manifestVersion === currentVersion;
-        
-        // Don't show if versions are equal (already up to date)
-        if (versionsAreEqual) {
-          console.log('Versions are equal, not showing modal');
-          if (typeof window !== 'undefined') {
-            localStorage.setItem('app_installed_version', manifestVersion);
-            localStorage.removeItem('app_dismissed_version');
+    const run = async () => {
+      try {
+        const installed = await getInstalledVersion()
+        if (cancelled) return
+        setInstalledVersion(installed)
+
+        let remoteVersion = ""
+        let remoteApk = ""
+        let remoteForce = false
+
+        // 1) Settings backend (flux Blaffa)
+        try {
+          const res = await api.get(SETTINGS_V2)
+          const settings = Array.isArray(res.data) ? res.data[0] : res.data
+          remoteVersion = String(
+            settings?.last_version ?? settings?.min_version ?? ""
+          )
+          remoteApk = String(settings?.dowload_apk_link || "")
+          if (settings?.min_version != null && compareVersions(settings.min_version, installed) > 0) {
+            remoteForce = true
           }
-          return;
+          if (settings?.last_version != null && compareVersions(settings.last_version, installed) > 0) {
+            remoteForce = true
+          }
+        } catch (e) {
+          console.warn("[UpdateCheck] settings failed, fallback manifest", e)
         }
-        
-        const shouldShow = (manifest.force === true && !isAlreadyInstalled && !wasDismissed) || 
-          (hasNewerVersion && !wasDismissed && !isAlreadyInstalled);
-        
-        console.log('Has newer version:', hasNewerVersion, 'Should show:', shouldShow);
-        
-        if (shouldShow) {
-          setApkUrl(manifest.apk_url);
-          setManifestVersion(manifestVersion);
-          setShow(true);
-        } else {
-          console.log('Modal not showing because:', {
-            force: manifest.force,
-            isAlreadyInstalled,
-            hasNewerVersion,
-            wasDismissed
-          });
+
+        // 2) Manifest Vercel (anciennes installs)
+        try {
+          const manRes = await fetch(
+            "https://turnaicash-mobile-app-1.vercel.app/releases/manifest.json",
+            { cache: "no-store" }
+          )
+          const manifest = await manRes.json()
+          if (!remoteVersion) {
+            remoteVersion = String(manifest.android_version || manifest.version || "")
+          }
+          if (!remoteApk) {
+            remoteApk = String(manifest.apk_url || "")
+          }
+          if (manifest.force === true) remoteForce = true
+        } catch (e) {
+          console.warn("[UpdateCheck] manifest failed", e)
         }
-      })
-      .catch(error => {
-        console.error('Error checking for updates:', error);
-      });
-  }, []);
+
+        if (!remoteVersion || !remoteApk) return
+
+        const needsUpdate = compareVersions(remoteVersion, installed) > 0
+        if (!needsUpdate) {
+          localStorage.setItem("installed_app_version", remoteVersion)
+          return
+        }
+
+        const dismissed = localStorage.getItem("app_dismissed_version")
+        if (!remoteForce && dismissed === remoteVersion) return
+
+        localStorage.setItem("latest_app_version", remoteVersion)
+        localStorage.setItem("download_apk_link", remoteApk)
+        localStorage.setItem("installed_app_version", installed)
+
+        if (cancelled) return
+        setLatestVersion(remoteVersion)
+        setApkUrl(remoteApk)
+        setForce(remoteForce)
+        setShow(true)
+      } catch (error) {
+        console.error("[UpdateCheck] error", error)
+      }
+    }
+
+    void run()
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const handleClose = () => {
-    // Store the dismissed version so we don't show it again
-    if (manifestVersion) {
-      localStorage.setItem('app_dismissed_version', manifestVersion);
-    }
-    setShow(false);
-  };
+    if (force) return
+    if (latestVersion) localStorage.setItem("app_dismissed_version", latestVersion)
+    setShow(false)
+  }
 
-  const handleDownload = async () => {
-    // Start download process (don't await - let it run in background)
-    downloadAndInstall(apkUrl).catch(err => {
-      console.error('Download process error:', err);
-    });
-    
-    // After user clicks download, immediately mark as installed and close modal
-    if (manifestVersion) {
-      localStorage.setItem('app_installed_version', manifestVersion);
-      // Also clear dismissed version for this version since they're installing it
-      localStorage.removeItem('app_dismissed_version');
-    }
-    setShow(false);
-  };
+  const handleDownload = () => {
+    void downloadAndInstall(apkUrl)
+  }
 
-  if (!show || !mounted) return null;
+  if (!show || !mounted || typeof document === "undefined") return null
 
-  {/*
-  const modalContent = (
-    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-[9999]">
-      <div className="bg-white dark:bg-gray-800 p-5 rounded-xl text-center shadow-2xl z-[10000] max-w-md mx-4 relative">
-        <button
-          onClick={handleClose}
-          className="absolute top-3 right-3 p-1 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
-          aria-label="Fermer"
-        >
-          <X className="w-5 h-5 text-gray-600 dark:text-gray-400" />
-        </button>
-
-        <h1 className="font-bold text-lg dark:text-white pr-8">Nouvelle mise à jour disponible</h1>
-        <p className="mt-2 mb-4 dark:text-gray-300">Une nouvelle version de l'application est disponible.</p>
-
-        <div className="flex gap-3 justify-center">
+  return createPortal(
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 p-4">
+      <div className="relative z-[10000] w-full max-w-md rounded-xl bg-white p-5 text-center shadow-2xl dark:bg-gray-800">
+        {!force && (
           <button
+            type="button"
             onClick={handleClose}
-            className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+            className="absolute right-3 top-3 rounded-full p-1 hover:bg-gray-200 dark:hover:bg-gray-700"
+            aria-label="Fermer"
           >
-            Plus tard
+            <X className="h-5 w-5 text-gray-600 dark:text-gray-400" />
           </button>
+        )}
+
+        <h1 className="pr-8 text-lg font-bold dark:text-white">
+          Nouvelle mise à jour disponible
+        </h1>
+        <p className="mt-2 mb-2 text-sm dark:text-gray-300">
+          Une nouvelle version de TURAINCASH est disponible.
+          {force
+            ? " Cette mise à jour est obligatoire pour continuer."
+            : " Installez-la pour profiter des dernières améliorations."}
+        </p>
+        <p className="mb-4 text-xs text-muted-foreground">
+          Actuelle: <span className="font-mono">{installedVersion}</span>
+          {latestVersion && (
+            <>
+              {" "}
+              → Nouvelle:{" "}
+              <span className="font-mono font-bold text-primary">{latestVersion}</span>
+            </>
+          )}
+        </p>
+
+        <div className="flex justify-center gap-3">
+          {!force && (
+            <button
+              type="button"
+              onClick={handleClose}
+              className="rounded border border-gray-300 px-4 py-2 text-gray-700 hover:bg-gray-100 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+            >
+              Plus tard
+            </button>
+          )}
           <button
+            type="button"
             onClick={handleDownload}
-            className="bg-black hover:bg-gray-800 text-white px-4 py-2 rounded transition-colors"
+            className="inline-flex items-center gap-2 rounded bg-black px-4 py-2 text-white hover:bg-gray-800"
           >
-            Télécharger la mise à jour
+            <Download className="h-4 w-4" />
+            Télécharger
           </button>
         </div>
       </div>
-    </div>
-  );
-  */}
-
-  // Render in a portal at document body level to ensure it's above everything
-  // return createPortal(modalContent, document.body);
-  return null;
+    </div>,
+    document.body
+  )
 }

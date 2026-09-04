@@ -9,6 +9,7 @@ export default function HomePage() {
   const router = useRouter()
 
   useEffect(() => {
+    // Capgo OTA: permet aux anciennes APK d'obtenir le nouveau JS puis le force-update APK
     void checkForUpdates().catch((err) => console.error("Update check failed:", err))
     if (isAuthenticated()) {
       router.replace("/dashboard")
