@@ -3,14 +3,12 @@
 import { useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { isAuthenticated } from "@/lib/auth"
-import { checkForUpdates } from "@/lib/updater"
 
 export default function HomePage() {
   const router = useRouter()
 
   useEffect(() => {
-    // Capgo OTA: permet aux anciennes APK d'obtenir le nouveau JS puis le force-update APK
-    void checkForUpdates().catch((err) => console.error("Update check failed:", err))
+    // Capgo OTA / force-update désactivés (boucle)
     if (isAuthenticated()) {
       router.replace("/dashboard")
     } else {
