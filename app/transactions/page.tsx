@@ -4,21 +4,18 @@ import { useState, useMemo } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
 import { useRouter } from "next/navigation"
-import { ArrowLeft, ArrowDownCircle, ArrowUpCircle, Search, Filter, X } from "lucide-react"
+import { ArrowLeft, Search, Filter, X, RefreshCw } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
+import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { AuthGuard } from "@/components/auth-guard"
 import api from "@/lib/api"
 import type { Transaction } from "@/lib/types"
-import { formatDate } from "@/lib/utils"
+import { TransactionActivityItem } from "@/components/transaction-activity-item"
 import { 
   TYPE_TRANS, 
   TRANS_STATUS, 
-  getTransactionTypeLabel, 
-  getTransactionStatusLabel 
 } from "@/lib/constants"
 
 function TransactionsContent() {
@@ -29,7 +26,7 @@ function TransactionsContent() {
   const [searchQuery, setSearchQuery] = useState<string>("")
   const [showFilters, setShowFilters] = useState<boolean>(false)
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isFetching, refetch } = useQuery({
     queryKey: ["transactions"],
     queryFn: async () => {
       const response = await api.get<{
@@ -43,7 +40,8 @@ function TransactionsContent() {
       })
       return response.data
     },
-    refetchInterval: 120000, // Refresh every 2 minutes
+    staleTime: 60 * 1000,
+    refetchInterval: 120000,
   })
 
   // Filter transactions based on search and filters
@@ -68,28 +66,6 @@ function TransactionsContent() {
     })
   }, [data?.results, searchQuery, typeFilter, statusFilter])
 
-  const getStatusBadge = (status: string) => {
-    const statusLabel = getTransactionStatusLabel(status as any)
-    switch (status) {
-      case "accept":
-        return <Badge className="bg-primary">{statusLabel}</Badge>
-      case "error":
-        return <Badge variant="destructive">{statusLabel}</Badge>
-      case "init_payment":
-        return <Badge variant="secondary">{statusLabel}</Badge>
-      default:
-        return <Badge variant="secondary">{statusLabel}</Badge>
-    }
-  }
-
-  const getTypeIcon = (type: string) => {
-    return type === "deposit" ? (
-      <ArrowDownCircle className="h-5 w-5 text-primary" />
-    ) : (
-      <ArrowUpCircle className="h-5 w-5 text-primary" />
-    )
-  }
-
   return (
     <div className="min-h-screen bg-muted/30">
       {/* Mobile Header */}
@@ -99,7 +75,16 @@ function TransactionsContent() {
             <Button variant="ghost" size="icon" className="h-10 w-10" onClick={() => router.push("/dashboard")}>
               <ArrowLeft className="h-5 w-5" />
             </Button>
-            <h1 className="text-lg font-bold flex-1">{t("transactions")}</h1>
+            <h1 className="text-lg font-bold flex-1">Activité récente</h1>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-10 w-10"
+              onClick={() => refetch()}
+              aria-label="Actualiser"
+            >
+              <RefreshCw className={`h-5 w-5 ${isFetching && !isLoading ? "animate-spin" : ""}`} />
+            </Button>
             <Button 
               variant="ghost" 
               size="icon" 
@@ -213,69 +198,16 @@ function TransactionsContent() {
             </p>
           </div>
         ) : (
-          <div className="space-y-3">
+          <div className="space-y-2.5">
             {filteredTransactions.map((transaction) => (
-              <Card 
-                key={transaction.id} 
-                className="overflow-hidden cursor-pointer active:scale-[0.98] transition-transform"
+              <TransactionActivityItem
+                key={transaction.id}
+                transaction={transaction}
                 onClick={() => {
-                  sessionStorage.setItem('cached_transaction', JSON.stringify(transaction))
+                  sessionStorage.setItem("cached_transaction", JSON.stringify(transaction))
                   router.push(`/transactions/detail?id=${transaction.id}`)
                 }}
-              >
-                <CardContent className="p-4">
-                  {/* Transaction Header */}
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="flex items-center gap-3 flex-1 min-w-0">
-                      <div className="flex-shrink-0">
-                        {getTypeIcon(transaction.type_trans)}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-semibold text-base truncate">
-                          {getTransactionTypeLabel(transaction.type_trans)}
-                        </p>
-                        <div className="flex items-center gap-2">
-                          {transaction.app_details?.name && (
-                            <p className="text-sm text-muted-foreground truncate">
-                              {transaction.app_details.name}
-                            </p>
-                          )}
-                          {transaction.app_details?.name && (
-                            <span className="text-sm text-muted-foreground">•</span>
-                          )}
-                          <p className="text-sm text-muted-foreground truncate">
-                            {transaction.reference}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="text-right flex-shrink-0">
-                      <p className="font-bold text-lg">
-                        {transaction.amount.toLocaleString()} FCFA
-                      </p>
-                      {getStatusBadge(transaction.status)}
-                    </div>
-                  </div>
-
-                  {/* Transaction Details */}
-                  <div className="space-y-2 pt-3 border-t">
-                    {transaction.app_details?.name && (
-                      <div className="flex justify-between items-center">
-                        <span className="text-sm text-muted-foreground">Plateforme</span>
-                        <span className="text-sm font-medium">{transaction.app_details.name}</span>
-                      </div>
-                    )}
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm text-muted-foreground">{t("phone")}</span>
-                      <span className="text-sm font-medium">{transaction.phone_number}</span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm text-muted-foreground">{t("date")}</span>
-                      <span className="text-sm font-medium">{formatDate(transaction.created_at)}</span>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
+              />
             ))}
           </div>
         )}

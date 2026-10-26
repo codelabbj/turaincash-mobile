@@ -4,11 +4,11 @@ import { useQuery, useInfiniteQuery } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
 import { useRouter } from "next/navigation"
 import { useState, useEffect, useRef } from "react"
-import { ArrowDownCircle, ArrowUpCircle, LogOut, Bell, Gift, Moon, Sun, Ticket, UserCircle, MessageCircle, Loader2, Bot, X } from "lucide-react"
+import { ArrowDownCircle, ArrowUpCircle, LogOut, Bell, Gift, Moon, Sun, Ticket, UserCircle, MessageCircle, Loader2, Bot, X, RefreshCw } from "lucide-react"
 import type { PaginatedResponse, Notification } from "@/lib/types"
 import { useTheme } from "next-themes"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import {
   DropdownMenu,
@@ -25,9 +25,9 @@ import { AuthGuard } from "@/components/auth-guard"
 import { getUser, logout } from "@/lib/auth"
 import api from "@/lib/api"
 import type { Transaction } from "@/lib/types"
-import { formatDate } from "@/lib/utils"
 import { useSettings } from "@/hooks/use-settings"
 import { SupportChatbot } from "@/components/SupportChatbot"
+import { TransactionActivityItem } from "@/components/transaction-activity-item"
 
 function DashboardContent() {
   const { t } = useTranslation()
@@ -55,9 +55,11 @@ function DashboardContent() {
   const { 
     data: infiniteTransactions, 
     isLoading,
+    isFetching,
     fetchNextPage,
     hasNextPage,
-    isFetchingNextPage
+    isFetchingNextPage,
+    refetch,
   } = useInfiniteQuery({
     queryKey: ["recent-transactions"],
     queryFn: async ({ pageParam = 1 }) => {
@@ -74,7 +76,8 @@ function DashboardContent() {
     getNextPageParam: (lastPage, allPages) => {
       return lastPage.next ? allPages.length + 1 : undefined
     },
-    refetchInterval: 30000,
+    staleTime: 60 * 1000,
+    refetchInterval: 120000,
   })
 
   const transactions = infiniteTransactions?.pages.flatMap(page => page.results) || []
@@ -205,30 +208,6 @@ function DashboardContent() {
 
   // Calculate unread notification count
   const unreadNotificationCount = notificationData?.results.filter(n => !n.is_read).length || 0
-
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case "accept":
-        return <Badge className="bg-primary">{t("accept")}</Badge>
-      case "reject":
-        return <Badge variant="destructive">{t("reject")}</Badge>
-      case "cancel":
-      case "annuler":
-        return <Badge variant="outline">Annulée</Badge>
-      case "timeout":
-        return <Badge variant="outline">Expirée</Badge>
-      default:
-        return <Badge variant="secondary">{t("pending")}</Badge>
-    }
-  }
-
-  const getTypeIcon = (type: string) => {
-    return type === "deposit" ? (
-      <ArrowDownCircle className="h-5 w-5 text-primary" />
-    ) : (
-      <ArrowUpCircle className="h-5 w-5 text-primary" />
-    )
-  }
 
   return (
     <div className="min-h-screen bg-muted/30">
@@ -464,82 +443,63 @@ function DashboardContent() {
         </div>
 
         {/* Recent Transactions */}
-        <Card className="shadow-sm">
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle className="text-lg">{t("recentTransactions")}</CardTitle>
-                {/* <CardDescription className="text-sm">Vos 5 dernières transactions</CardDescription> */}
-              </div>
-              <Button 
-                variant="ghost" 
-                size="sm" 
-                className="h-8 px-3 text-sm"
+        <div>
+          <div className="flex items-center justify-between mb-3 px-1">
+            <h2 className="text-lg font-semibold">Activité récente</h2>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-9 w-9 rounded-full"
+                onClick={() => refetch()}
+                aria-label="Actualiser"
+              >
+                <RefreshCw className={`h-4 w-4 ${isFetching && !isLoading && !isFetchingNextPage ? "animate-spin" : ""}`} />
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-9 rounded-full px-4"
                 onClick={() => router.push("/transactions")}
               >
-                {t("viewAll")}
+                Tout
+                <span className="ml-1">›</span>
               </Button>
             </div>
-          </CardHeader>
-          <CardContent className="pt-0">
-            {isLoading ? (
-              <div className="text-center py-8 text-muted-foreground">
-                <div className="inline-block h-6 w-6 animate-spin rounded-full border-2 border-solid border-current border-r-transparent mb-2"></div>
-                <p className="text-sm">{t("loading")}</p>
-              </div>
-            ) : !transactions || transactions.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">
-                <p className="text-sm">{t("noData")}</p>
-              </div>
-            ) : (
-              <div 
-                ref={scrollContainerRef}
-                onScroll={handleScroll}
-                className="space-y-2 h-[320px] overflow-y-auto pr-1 pb-4"
-              >
-                {transactions.map((transaction) => (
-                  <div
-                    key={transaction.id}
-                    className="flex items-center justify-between p-3 rounded-lg border hover:bg-muted/50 transition-colors active:bg-muted/70 cursor-pointer"
-                    onClick={() => {
-                      sessionStorage.setItem('cached_transaction', JSON.stringify(transaction))
-                      router.push(`/transactions/detail?id=${transaction.id}`)
-                    }}
-                  >
-                    <div className="flex items-center gap-3 flex-1 min-w-0">
-                      <div className="flex-shrink-0">
-                        {getTypeIcon(transaction.type_trans)}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium text-sm truncate">
-                          {transaction.type_trans === "deposit" ? t("deposit") : t("withdraw")}
-                        </p>
-                        <div className="flex items-center gap-2">
-                          {transaction.app_details?.name && (
-                            <p className="text-xs text-muted-foreground truncate">
-                              {transaction.app_details.name}
-                            </p>
-                          )}
-                          <span className="text-xs text-muted-foreground">•</span>
-                          <p className="text-xs text-muted-foreground">{formatDate(transaction.created_at)}</p>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="text-right space-y-1 flex-shrink-0">
-                      <p className="font-semibold text-sm">{transaction.amount.toLocaleString()} FCFA</p>
-                      {getStatusBadge(transaction.status)}
-                    </div>
-                  </div>
-                ))}
-                {isFetchingNextPage && (
-                  <div className="flex justify-center py-4">
-                    <Loader2 className="h-6 w-6 animate-spin text-primary" />
-                  </div>
-                )}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+          </div>
+          {isLoading ? (
+            <div className="text-center py-8 text-muted-foreground">
+              <div className="inline-block h-6 w-6 animate-spin rounded-full border-2 border-solid border-current border-r-transparent mb-2"></div>
+              <p className="text-sm">{t("loading")}</p>
+            </div>
+          ) : !transactions || transactions.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              <p className="text-sm">{t("noData")}</p>
+            </div>
+          ) : (
+            <div 
+              ref={scrollContainerRef}
+              onScroll={handleScroll}
+              className="space-y-2.5 h-[360px] overflow-y-auto pr-1 pb-4"
+            >
+              {transactions.map((transaction) => (
+                <TransactionActivityItem
+                  key={transaction.id}
+                  transaction={transaction}
+                  onClick={() => {
+                    sessionStorage.setItem("cached_transaction", JSON.stringify(transaction))
+                    router.push(`/transactions/detail?id=${transaction.id}`)
+                  }}
+                />
+              ))}
+              {isFetchingNextPage && (
+                <div className="flex justify-center py-3">
+                  <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </main>
 
       {/* Floating Message Button — gated by use_chatbot / use_whatsapp / use_telegram */}

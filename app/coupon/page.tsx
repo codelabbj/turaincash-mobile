@@ -52,7 +52,8 @@ function PronosTab() {
       const response = await api.get<TodayResponse>("/api/v1/predictions/today/")
       return response.data
     },
-    refetchInterval: 5 * 60 * 1000,
+    staleTime: (query) => (query.state.data as TodayResponse | undefined)?.locked ? 15_000 : 5 * 60 * 1000,
+    gcTime: 30 * 60 * 1000,
   })
 
   if (isLoading) {
