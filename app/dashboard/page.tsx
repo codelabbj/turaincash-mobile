@@ -399,8 +399,8 @@ function DashboardContent() {
                   <Ticket className="h-4 w-4 text-primary" />
                 </div>
                 <div>
-                  <p className="font-semibold text-sm">Mes Coupons</p>
-                  <p className="text-xs text-muted-foreground">Voir mes codes promo</p>
+                  <p className="font-semibold text-sm">Pronos</p>
+                  <p className="text-xs text-muted-foreground">Analyses du jour & codes</p>
                 </div>
               </div>
               <Button variant="ghost" size="sm" className="h-8">
