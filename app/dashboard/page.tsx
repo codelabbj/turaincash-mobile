@@ -4,7 +4,7 @@ import { useQuery, useInfiniteQuery } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
 import { useRouter } from "next/navigation"
 import { useState, useEffect, useRef } from "react"
-import { ArrowDownCircle, ArrowUpCircle, LogOut, Bell, Gift, Moon, Sun, Ticket, UserCircle, MessageCircle, Loader2, Bot, X, RefreshCw } from "lucide-react"
+import { ArrowDownToLine, ArrowUpFromLine, LogOut, Bell, Gift, Moon, Sun, Ticket, UserCircle, MessageCircle, Loader2, Bot, X, RefreshCw } from "lucide-react"
 import type { PaginatedResponse, Notification } from "@/lib/types"
 import { useTheme } from "next-themes"
 import { Button } from "@/components/ui/button"
@@ -267,13 +267,36 @@ function DashboardContent() {
       </header>
 
       <main className="px-4 py-4 space-y-4">
-        {/* Greeting */}
-        <div className="px-1">
-          <p className="text-sm text-muted-foreground">
-            {t("hello")}, {user?.first_name || "User"}
-          </p>
+        <div className="space-y-4">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight leading-tight">
+              Bienvenue, {user?.first_name} {user?.last_name}
+            </h1>
+            <p className="text-sm text-muted-foreground mt-1">
+              Gérez vos dépôts et retraits en toute simplicité
+            </p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              type="button"
+              onClick={() => router.push("/deposit")}
+              className="flex items-center justify-center gap-2 h-14 rounded-[28px] bg-[#7cbc6a] hover:bg-[#6dad5c] active:scale-[0.98] text-white font-semibold text-base transition-colors"
+            >
+              <ArrowDownToLine className="h-5 w-5" />
+              Dépôt
+            </button>
+            <button
+              type="button"
+              onClick={() => router.push("/withdraw")}
+              className="flex items-center justify-center gap-2 h-14 rounded-[28px] bg-[#5b6ef5] hover:bg-[#4d60e8] active:scale-[0.98] text-white font-semibold text-base transition-colors"
+            >
+              <ArrowUpFromLine className="h-5 w-5" />
+              Retrait
+            </button>
+          </div>
         </div>
-        {/* Bonus Card */}
+
         {referralBonusEnabled && user && user.bonus_available > 0 && (
           <Card className="bg-gradient-to-r from-amber-500 to-orange-500 text-white border-0 shadow-lg">
             <CardContent className="p-4">
@@ -389,58 +412,16 @@ function DashboardContent() {
           </CardContent>
         </Card>
 
-        {/* Action Buttons */}
-        <div className={`grid gap-2 ${referralBonusEnabled ? 'grid-cols-3' : 'grid-cols-2'}`}>
-          <div
-            className="relative overflow-hidden rounded-xl bg-gradient-to-br from-green-500/10 to-green-500/20 dark:from-green-500/20 dark:to-green-500/30 border border-green-500/30 dark:border-green-500/50 cursor-pointer transition-all duration-200 active:scale-95 hover:shadow-md"
-            onClick={() => router.push("/deposit")}
+        {referralBonusEnabled && (
+          <button
+            type="button"
+            onClick={() => router.push("/bonus")}
+            className="w-full flex items-center justify-center gap-2 h-12 rounded-[28px] bg-primary/15 hover:bg-primary/20 text-primary font-semibold text-sm transition-colors"
           >
-            <div className="p-3">
-              <div className="flex items-center gap-2 mb-1">
-                <div className="w-6 h-6 rounded-full bg-green-500 flex items-center justify-center">
-                  <ArrowDownCircle className="h-4 w-4 text-white" />
-                </div>
-                <span className="font-semibold text-sm text-green-600 dark:text-green-400">{t("deposit")}</span>
-              </div>
-              <p className="text-xs text-green-600/80 dark:text-green-400/70">Dépôt</p>
-            </div>
-            <div className="absolute -bottom-1 -right-1 w-8 h-8 bg-green-500/20 rounded-full"></div>
-          </div>
-
-          <div
-            className="relative overflow-hidden rounded-xl bg-gradient-to-br from-orange-500/10 to-orange-500/20 dark:from-orange-500/20 dark:to-orange-500/30 border border-orange-500/30 dark:border-orange-500/50 cursor-pointer transition-all duration-200 active:scale-95 hover:shadow-md"
-            onClick={() => router.push("/withdraw")}
-          >
-            <div className="p-3">
-              <div className="flex items-center gap-2 mb-1">
-                <div className="w-6 h-6 rounded-full bg-orange-500 flex items-center justify-center">
-                  <ArrowUpCircle className="h-4 w-4 text-white" />
-                </div>
-                <span className="font-semibold text-sm text-orange-600 dark:text-orange-400">{t("withdraw")}</span>
-              </div>
-              <p className="text-xs text-orange-600/80 dark:text-orange-400/70">Retrait</p>
-            </div>
-            <div className="absolute -bottom-1 -right-1 w-8 h-8 bg-orange-500/20 rounded-full"></div>
-          </div>
-
-          {referralBonusEnabled && (
-            <div
-              className="relative overflow-hidden rounded-xl bg-gradient-to-br from-primary/10 to-primary/20 dark:from-primary/20 dark:to-primary/30 border border-primary/30 dark:border-primary/50 cursor-pointer transition-all duration-200 active:scale-95 hover:shadow-md"
-              onClick={() => router.push("/bonus")}
-            >
-              <div className="p-3">
-                <div className="flex items-center gap-2 mb-1">
-                  <div className="w-6 h-6 rounded-full bg-primary flex items-center justify-center">
-                    <Gift className="h-4 w-4 text-white" />
-                  </div>
-                  <span className="font-semibold text-sm text-primary dark:text-primary">Bonus</span>
-                </div>
-                <p className="text-xs text-primary/80 dark:text-primary/70">Mes Bonus</p>
-              </div>
-              <div className="absolute -bottom-1 -right-1 w-8 h-8 bg-primary/20 rounded-full"></div>
-            </div>
-          )}
-        </div>
+            <Gift className="h-4 w-4" />
+            Mes Bonus
+          </button>
+        )}
 
         {/* Recent Transactions */}
         <div>
